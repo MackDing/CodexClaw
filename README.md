@@ -102,7 +102,7 @@ npm run healthcheck
 
 ```text
 Telegram Message
-  -> src/bot/handlers.js
+  -> src/bot/handlers.ts
   -> src/orchestrator/router.ts
      -> src/runner/ptyManager.ts        (coding tasks -> Codex CLI)
      -> src/orchestrator/skills/*.js    (general tasks -> MCP/GitHub subagents)
@@ -112,7 +112,7 @@ Telegram Message
 
 Core modules:
 
-- `src/index.js`: bootstrap and lifecycle
+- `src/index.ts`: bootstrap and lifecycle
 - `src/config.ts`: env parsing and validation
 - `src/bot/`: auth middleware, formatting, command handlers
 - `src/orchestrator/`: routing + MCP client + skills
@@ -156,7 +156,7 @@ Where this happens:
 
 - Router decision order: [router.ts](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/router.ts)
 - Skill toggles per chat: [skillRegistry.ts](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/orchestrator/skillRegistry.ts)
-- Telegram command entrypoints: [handlers.js](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/bot/handlers.js)
+- Telegram command entrypoints: [handlers.ts](/Users/ding/Documents/Code/Github/codex-telegram-claws/src/bot/handlers.ts)
 
 Operationally, subagents are the bot's control plane. Codex remains the coding execution plane.
 

@@ -44,7 +44,8 @@ export default [
     rules: {
       ...tsPlugin.configs.recommended.rules,
       "no-console": "off",
-      "no-undef": "off"
+      "no-undef": "off",
+      "@typescript-eslint/no-explicit-any": "off"
     }
   }
 ];

@@ -6,8 +6,40 @@ import {
 } from "./commandUtils.js";
 import { normalizeLanguage, SUPPORTED_LANGUAGES, t } from "./i18n.js";
 import { escapeMarkdownV2, splitTelegramMessage } from "./formatter.js";
+import type { Router } from "../orchestrator/router.js";
+import type { PtyManager } from "../runner/ptyManager.js";
+import type { ShellManager } from "../runner/shellManager.js";
+import type { SkillRegistry } from "../orchestrator/skillRegistry.js";
 
-async function sendChunkedMarkdown(ctx, text, extra = {}) {
+type Locale = "en" | "zh" | "zh-HK";
+
+interface SkillResultPayload {
+  text?: string;
+  testJobId?: string;
+}
+
+interface RegisterHandlersOptions {
+  bot: any;
+  router: Router;
+  ptyManager: PtyManager;
+  shellManager: ShellManager;
+  skills: Record<string, any>;
+  skillRegistry: SkillRegistry;
+  scheduler: any;
+  adminActions?: {
+    restart?: () => Promise<void>;
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function sendChunkedMarkdown(
+  ctx: any,
+  text: string,
+  extra: Record<string, unknown> = {}
+): Promise<void> {
   const markdown = escapeMarkdownV2(text);
   const chunks = splitTelegramMessage(markdown, 3900);
 
@@ -20,7 +52,11 @@ async function sendChunkedMarkdown(ctx, text, extra = {}) {
   }
 }
 
-async function sendSkillResult(ctx, result, locale = "en") {
+async function sendSkillResult(
+  ctx: any,
+  result: string | SkillResultPayload,
+  locale: Locale = "en"
+): Promise<void> {
   const payload = typeof result === "string" ? { text: result } : result;
   const text = payload?.text || t(locale, "emptyResponse");
   const markdown = escapeMarkdownV2(text);
@@ -45,25 +81,33 @@ async function sendSkillResult(ctx, result, locale = "en") {
   }
 }
 
-function formatProjectLines(projects, currentWorkdir) {
+function formatProjectLines(
+  projects: Array<{ path: string; relativePath: string; name?: string }>,
+  currentWorkdir: string
+): string[] {
   return projects.map((project) => {
     const marker = project.path === currentWorkdir ? " <current>" : "";
     return `- ${project.relativePath}${marker}`;
   });
 }
 
-function formatSkillLines(skillStates) {
+function formatSkillLines(
+  skillStates: Array<{ name: string; enabled: boolean }>
+): string[] {
   return skillStates.map(
     (skill) => `- ${skill.name}: ${skill.enabled ? "on" : "off"}`
   );
 }
 
-function suggestProjectName(input, projects) {
+function suggestProjectName(
+  input: string,
+  projects: Array<{ relativePath: string; name?: string }>
+): string | null {
   const candidates = [
     ...new Set(
       projects
         .flatMap((project) => [project.relativePath, project.name])
-        .filter(Boolean)
+        .filter(Boolean) as string[]
     )
   ];
 
@@ -84,24 +128,25 @@ export function registerHandlers({
   skillRegistry,
   scheduler,
   adminActions
-}) {
-  const localeOf = (chatId) => ptyManager.getLanguage(chatId);
+}: RegisterHandlersOptions): void {
+  const localeOf = (chatId: string | number): Locale =>
+    ptyManager.getLanguage(chatId);
 
-  bot.start(async (ctx) => {
+  bot.start(async (ctx: any) => {
     await sendChunkedMarkdown(
       ctx,
       t(localeOf(ctx.chat.id), "startLines").join("\n")
     );
   });
 
-  bot.command("help", async (ctx) => {
+  bot.command("help", async (ctx: any) => {
     await sendChunkedMarkdown(
       ctx,
       t(localeOf(ctx.chat.id), "helpLines").join("\n")
     );
   });
 
-  bot.command("status", async (ctx) => {
+  bot.command("status", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const status = ptyManager.getStatus(ctx.chat.id);
     const skillStates = skillRegistry.list(ctx.chat.id);
@@ -111,12 +156,15 @@ export function registerHandlers({
       : "disabled";
     const skillsSummary =
       skillStates
-        .map((skill) => `${skill.name}:${skill.enabled ? "on" : "off"}`)
+        .map(
+          (skill: { name: string; enabled: boolean }) =>
+            `${skill.name}:${skill.enabled ? "on" : "off"}`
+        )
         .join(", ") || "none";
     const mcpSummary = mcpServers.length
       ? mcpServers
           .map(
-            (server) =>
+            (server: { name: string; enabled: boolean; connected: boolean }) =>
               `${server.name}:${server.enabled ? "on" : "off"}/${server.connected ? "up" : "down"}`
           )
           .join(", ")
@@ -137,7 +185,7 @@ export function registerHandlers({
     );
   });
 
-  bot.command("pwd", async (ctx) => {
+  bot.command("pwd", async (ctx: any) => {
     const status = ptyManager.getStatus(ctx.chat.id);
     await sendChunkedMarkdown(
       ctx,
@@ -152,7 +200,7 @@ export function registerHandlers({
     );
   });
 
-  bot.command("repo", async (ctx) => {
+  bot.command("repo", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const payload = extractCommandPayload(ctx.message.text, "repo");
     const status = ptyManager.getStatus(ctx.chat.id);
@@ -242,12 +290,12 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "repoSwitchFailed", { error: error.message })
+        t(locale, "repoSwitchFailed", { error: errorMessage(error) })
       );
     }
   });
 
-  bot.command("skill", async (ctx) => {
+  bot.command("skill", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const payload = extractCommandPayload(ctx.message.text, "skill");
     if (!payload || /^(list|status)$/i.test(payload)) {
@@ -295,12 +343,12 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "skillManagementFailed", { error: error.message })
+        t(locale, "skillManagementFailed", { error: errorMessage(error) })
       );
     }
   });
 
-  bot.command("new", async (ctx) => {
+  bot.command("new", async (ctx: any) => {
     const result = ptyManager.resetCurrentProjectConversation(ctx.chat.id);
     await sendChunkedMarkdown(
       ctx,
@@ -308,7 +356,7 @@ export function registerHandlers({
     );
   });
 
-  bot.command("restart", async (ctx) => {
+  bot.command("restart", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     if (!adminActions?.restart) {
       await sendChunkedMarkdown(ctx, t(locale, "restartUnavailable"));
@@ -319,7 +367,7 @@ export function registerHandlers({
     await adminActions.restart();
   });
 
-  bot.command("exec", async (ctx) => {
+  bot.command("exec", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const task = extractCommandPayload(ctx.message.text, "exec");
     if (!task) {
@@ -340,7 +388,7 @@ export function registerHandlers({
     }
   });
 
-  bot.command("sh", async (ctx) => {
+  bot.command("sh", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const command = extractCommandPayload(ctx.message.text, "sh");
     if (!command) {
@@ -358,7 +406,7 @@ export function registerHandlers({
     try {
       validation = shellManager.inspectCommand(command, { locale });
     } catch (error) {
-      await sendChunkedMarkdown(ctx, error.message);
+      await sendChunkedMarkdown(ctx, errorMessage(error));
       return;
     }
 
@@ -396,7 +444,7 @@ export function registerHandlers({
     await sendChunkedMarkdown(ctx, t(locale, "shellResult", { result }));
   });
 
-  bot.command("auto", async (ctx) => {
+  bot.command("auto", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const task = extractCommandPayload(ctx.message.text, "auto");
     if (!task) {
@@ -418,7 +466,7 @@ export function registerHandlers({
     }
   });
 
-  bot.command("plan", async (ctx) => {
+  bot.command("plan", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const task = extractCommandPayload(ctx.message.text, "plan");
     if (!task) {
@@ -439,7 +487,7 @@ export function registerHandlers({
     }
   });
 
-  bot.command("model", async (ctx) => {
+  bot.command("model", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const value = extractCommandPayload(ctx.message.text, "model");
     if (!value) {
@@ -463,7 +511,7 @@ export function registerHandlers({
     await sendChunkedMarkdown(ctx, t(locale, "modelSet", { value, closed }));
   });
 
-  bot.command("verbose", async (ctx) => {
+  bot.command("verbose", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const value = extractCommandPayload(ctx.message.text, "verbose");
     if (!value) {
@@ -497,7 +545,7 @@ export function registerHandlers({
     await sendChunkedMarkdown(ctx, t(locale, "usageVerbose"));
   });
 
-  bot.command("language", async (ctx) => {
+  bot.command("language", async (ctx: any) => {
     const currentLocale = localeOf(ctx.chat.id);
     const value = extractCommandPayload(ctx.message.text, "language");
     if (!value) {
@@ -511,7 +559,7 @@ export function registerHandlers({
     }
 
     const normalized = normalizeLanguage(value);
-    if (!SUPPORTED_LANGUAGES.includes(normalized)) {
+    if (!normalized || !SUPPORTED_LANGUAGES.includes(normalized)) {
       await sendChunkedMarkdown(ctx, t(currentLocale, "languageInvalid"));
       return;
     }
@@ -525,7 +573,7 @@ export function registerHandlers({
     );
   });
 
-  bot.command("interrupt", async (ctx) => {
+  bot.command("interrupt", async (ctx: any) => {
     const ok = ptyManager.interrupt(ctx.chat.id);
     await sendChunkedMarkdown(
       ctx,
@@ -533,7 +581,7 @@ export function registerHandlers({
     );
   });
 
-  bot.command("stop", async (ctx) => {
+  bot.command("stop", async (ctx: any) => {
     const ok = ptyManager.closeSession(ctx.chat.id);
     await sendChunkedMarkdown(
       ctx,
@@ -541,7 +589,7 @@ export function registerHandlers({
     );
   });
 
-  bot.command("cron_now", async (ctx) => {
+  bot.command("cron_now", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     try {
       await scheduler.triggerDailySummaryNow(ctx.from.id);
@@ -549,12 +597,12 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "triggerFailed", { error: error.message })
+        t(locale, "triggerFailed", { error: errorMessage(error) })
       );
     }
   });
 
-  bot.command("gh", async (ctx) => {
+  bot.command("gh", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     if (!skillRegistry.isEnabled(ctx.chat.id, "github")) {
       await sendChunkedMarkdown(ctx, t(locale, "githubDisabled"));
@@ -573,12 +621,12 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "githubFailed", { error: error.message })
+        t(locale, "githubFailed", { error: errorMessage(error) })
       );
     }
   });
 
-  bot.command("mcp", async (ctx) => {
+  bot.command("mcp", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     if (!skillRegistry.isEnabled(ctx.chat.id, "mcp")) {
       await sendChunkedMarkdown(ctx, t(locale, "mcpDisabled"));
@@ -592,12 +640,12 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "mcpFailed", { error: error.message })
+        t(locale, "mcpFailed", { error: errorMessage(error) })
       );
     }
   });
 
-  bot.on("callback_query", async (ctx) => {
+  bot.on("callback_query", async (ctx: any) => {
     const locale = localeOf(ctx.chat.id);
     const data = ctx.callbackQuery?.data || "";
     if (!data.startsWith("gh:test_status:")) return;
@@ -614,7 +662,7 @@ export function registerHandlers({
     await sendSkillResult(ctx, result, locale);
   });
 
-  bot.on("text", async (ctx) => {
+  bot.on("text", async (ctx: any) => {
     const text = ctx.message.text?.trim() || "";
     const locale = localeOf(ctx.chat.id);
     if (!text) return;
@@ -667,7 +715,7 @@ export function registerHandlers({
     } catch (error) {
       await sendChunkedMarkdown(
         ctx,
-        t(locale, "processingFailed", { error: error.message })
+        t(locale, "processingFailed", { error: errorMessage(error) })
       );
     }
   });

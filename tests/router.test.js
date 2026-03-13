@@ -53,7 +53,7 @@ test("router sends coding tasks directly to codex PTY", async () => {
   });
 
   const route = await router.routeMessage(
-    "Please fix src/index.js and run tests",
+    "Please fix src/index.ts and run tests",
     {
       chatId: 1
     }
@@ -61,7 +61,7 @@ test("router sends coding tasks directly to codex PTY", async () => {
 
   assert.deepEqual(route, {
     target: "pty",
-    prompt: "Please fix src/index.js and run tests"
+    prompt: "Please fix src/index.ts and run tests"
   });
 });
 

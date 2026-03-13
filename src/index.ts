@@ -19,11 +19,11 @@ const bot = new Telegraf(config.telegram.botToken, {
   handlerTimeout: 120000
 });
 const stateStore = new RuntimeStateStore({ config });
-let mcpClient;
-let skillRegistry;
-let ptyManager;
+let mcpClient: McpClient | null = null;
+let skillRegistry: SkillRegistry | null = null;
+let ptyManager: PtyManager | null = null;
 
-async function saveRuntimeState() {
+async function saveRuntimeState(): Promise<void> {
   if (!mcpClient || !skillRegistry || !ptyManager) return;
   await stateStore.save({
     mcp: mcpClient.exportState(),
@@ -32,13 +32,14 @@ async function saveRuntimeState() {
   });
 }
 
-async function restartBotProcess() {
+async function restartBotProcess(): Promise<void> {
   await saveRuntimeState();
 
   const bootstrapScript = [
     "const { spawn } = require('node:child_process');",
+    "const cliPath = require.resolve('tsx/dist/cli.mjs');",
     "setTimeout(() => {",
-    `  const child = spawn(process.execPath, ['src/index.js'], { cwd: ${JSON.stringify(process.cwd())}, env: process.env, detached: true, stdio: 'ignore' });`,
+    `  const child = spawn(process.execPath, [cliPath, 'src/index.ts'], { cwd: ${JSON.stringify(process.cwd())}, env: process.env, detached: true, stdio: 'ignore' });`,
     "  child.unref();",
     "}, 1500);"
   ].join("\n");
@@ -61,8 +62,9 @@ mcpClient = new McpClient(config, {
   onChange: () => void saveRuntimeState()
 });
 mcpClient.restoreState(runtimeState.mcp);
-await mcpClient.connectAll().catch((error) => {
-  console.error("[mcp] connect failed:", error.message);
+await mcpClient.connectAll().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error("[mcp] connect failed:", message);
 });
 
 const githubSkill = new GitHubSkill({ config });
@@ -79,7 +81,7 @@ skillRegistry.restoreState(runtimeState.skills);
 const router = new Router({
   skills,
   isSkillEnabled: (chatId, skillName) =>
-    skillRegistry.isEnabled(chatId, skillName)
+    skillRegistry?.isEnabled(chatId ?? "", skillName) ?? false
 });
 
 ptyManager = new PtyManager({
@@ -111,19 +113,20 @@ registerHandlers({
   }
 });
 
-bot.catch(async (error, ctx) => {
+bot.catch(async (error: unknown, ctx: any) => {
   console.error("[bot] unhandled error:", error);
-  await ctx.reply(`Bot error: ${error.message}`).catch(() => {});
+  const message = error instanceof Error ? error.message : String(error);
+  await ctx.reply(`Bot error: ${message}`).catch(() => {});
 });
 
 await bot.launch();
 console.log("codex-telegram-claws started.");
 
-async function shutdown(signal) {
+async function shutdown(signal: string): Promise<void> {
   console.log(`Shutting down by ${signal}...`);
   scheduler.stop();
-  await ptyManager.shutdown();
-  await mcpClient.closeAll();
+  await ptyManager?.shutdown();
+  await mcpClient?.closeAll();
   bot.stop(signal);
   process.exit(0);
 }

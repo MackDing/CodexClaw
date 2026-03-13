@@ -19,11 +19,11 @@ test("extractCommandPayload removes telegram command prefix and bot suffix", () 
 });
 
 test("buildPlanPrompt forces planning-only behavior", () => {
-  const prompt = buildPlanPrompt("refactor src/index.js");
+  const prompt = buildPlanPrompt("refactor src/index.ts");
 
   assert.match(prompt, /Planning mode only/);
   assert.match(prompt, /Do not modify files/);
-  assert.match(prompt, /Task:\nrefactor src\/index\.js/);
+  assert.match(prompt, /Task:\nrefactor src\/index\.ts/);
 });
 
 test("suggestClosestWord returns the nearest supported command when the typo is small", () => {

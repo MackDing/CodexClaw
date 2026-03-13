@@ -2,7 +2,7 @@
 
 ## Repo Structure
 
-- `src/index.js`: application entrypoint and subsystem wiring.
+- `src/index.ts`: application entrypoint and subsystem wiring.
 - `src/bot/`: Telegram handlers, formatting, command parsing, i18n, middleware.
 - `src/orchestrator/`: routing, MCP client, skill registry, GitHub/MCP skills.
 - `src/runner/`: Codex PTY/exec management and restricted shell execution.
