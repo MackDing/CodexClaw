@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import dotenv from "dotenv";
@@ -40,6 +41,21 @@ function parseJson(value, fallback) {
   }
 }
 
+function resolveDirectory(value, name, fallback = process.cwd()) {
+  const resolvedFallback = path.resolve(fallback);
+  const candidate = path.resolve(value || resolvedFallback);
+
+  if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+    return candidate;
+  }
+
+  if (value && value.trim()) {
+    console.warn(`[config] ${name} does not exist: ${candidate}. Falling back to ${resolvedFallback}`);
+  }
+
+  return resolvedFallback;
+}
+
 function normalizeMcpServer(raw, index) {
   if (!raw || typeof raw !== "object") return null;
   if (!raw.name || !raw.command) {
@@ -50,7 +66,7 @@ function normalizeMcpServer(raw, index) {
     name: String(raw.name),
     command: String(raw.command),
     args: Array.isArray(raw.args) ? raw.args.map(String) : [],
-    cwd: raw.cwd ? path.resolve(String(raw.cwd)) : process.cwd(),
+    cwd: resolveDirectory(raw.cwd ? String(raw.cwd) : process.cwd(), `MCP_SERVERS[${index}].cwd`),
     env: raw.env && typeof raw.env === "object" ? raw.env : {}
   };
 }
@@ -66,6 +82,8 @@ export function loadConfig() {
   const mcpServers = Array.isArray(rawMcpServers)
     ? rawMcpServers.map((server, index) => normalizeMcpServer(server, index)).filter(Boolean)
     : [];
+  const runnerCwd = resolveDirectory(process.env.CODEX_WORKDIR, "CODEX_WORKDIR");
+  const githubDefaultWorkdir = resolveDirectory(process.env.GITHUB_DEFAULT_WORKDIR, "GITHUB_DEFAULT_WORKDIR");
 
   return {
     app: {
@@ -79,7 +97,7 @@ export function loadConfig() {
     runner: {
       command: process.env.CODEX_COMMAND?.trim() || "codex",
       args: parseArgs(process.env.CODEX_ARGS || ""),
-      cwd: path.resolve(process.env.CODEX_WORKDIR || process.cwd()),
+      cwd: runnerCwd,
       throttleMs: parseNumber(process.env.STREAM_THROTTLE_MS, 1200),
       maxBufferChars: parseNumber(process.env.STREAM_BUFFER_CHARS, 120000),
       telegramChunkSize: 3900
@@ -96,7 +114,7 @@ export function loadConfig() {
     },
     github: {
       token: process.env.GITHUB_TOKEN?.trim() || "",
-      defaultWorkdir: path.resolve(process.env.GITHUB_DEFAULT_WORKDIR || process.cwd()),
+      defaultWorkdir: githubDefaultWorkdir,
       defaultBranch: process.env.GITHUB_DEFAULT_BRANCH?.trim() || "main",
       e2eCommand: process.env.E2E_TEST_COMMAND?.trim() || "npx playwright test --reporter=line"
     }

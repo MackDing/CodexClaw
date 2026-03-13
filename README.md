@@ -47,7 +47,7 @@ Minimum required:
 ```bash
 BOT_TOKEN=123456789:telegram-token
 ALLOWED_USER_IDS=123456789
-CODEX_WORKDIR=/absolute/path/to/your/workspace
+CODEX_WORKDIR=.
 ```
 
 ### Run
@@ -154,7 +154,7 @@ Required:
 ```bash
 BOT_TOKEN=...
 ALLOWED_USER_IDS=123456789,987654321
-CODEX_WORKDIR=/abs/path/workspace
+CODEX_WORKDIR=.
 ```
 
 Common options:
@@ -174,14 +174,14 @@ PROACTIVE_USER_IDS=123456789
 MCP:
 
 ```bash
-MCP_SERVERS=[{"name":"filesystem","command":"npx","args":["-y","@modelcontextprotocol/server-filesystem","/abs/path/workspace"]}]
+MCP_SERVERS=[]
 ```
 
 GitHub:
 
 ```bash
 GITHUB_TOKEN=ghp_xxx
-GITHUB_DEFAULT_WORKDIR=/abs/path/workspace
+GITHUB_DEFAULT_WORKDIR=.
 GITHUB_DEFAULT_BRANCH=main
 E2E_TEST_COMMAND=npx playwright test --reporter=line
 ```

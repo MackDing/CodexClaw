@@ -44,6 +44,17 @@ function withEnv(overrides, fn) {
   }
 }
 
+function withMutedWarnings(fn) {
+  const originalWarn = console.warn;
+  console.warn = () => {};
+
+  try {
+    return fn();
+  } finally {
+    console.warn = originalWarn;
+  }
+}
+
 test("loadConfig parses env values into runtime config", () => {
   const config = withEnv(
     {
@@ -97,4 +108,24 @@ test("loadConfig requires at least one allowed user", () => {
       ),
     /ALLOWED_USER_IDS must contain at least one Telegram user id/
   );
+});
+
+test("loadConfig falls back to the current working directory when configured paths do not exist", () => {
+  const cwd = process.cwd();
+  const config = withMutedWarnings(() =>
+    withEnv(
+      {
+        BOT_TOKEN: "telegram-token",
+        ALLOWED_USER_IDS: "1",
+        CODEX_WORKDIR: "/definitely/missing/codex-workdir",
+        GITHUB_DEFAULT_WORKDIR: "/definitely/missing/github-workdir",
+        MCP_SERVERS: '[{"name":"filesystem","command":"npx","cwd":"/definitely/missing/mcp-cwd"}]'
+      },
+      () => loadConfig()
+    )
+  );
+
+  assert.equal(config.runner.cwd, cwd);
+  assert.equal(config.github.defaultWorkdir, cwd);
+  assert.equal(config.mcp.servers[0].cwd, cwd);
 });
