@@ -410,7 +410,10 @@ export class PtyManager {
     if (!session) return;
 
     const rawTail = session.rawBuffer.slice(-60000);
-    const rendered = formatPtyOutput(rawTail, { mode: this.config.reasoning.mode });
+    const rendered = formatPtyOutput(rawTail, {
+      mode: this.config.reasoning.mode,
+      sessionMode: session.mode
+    });
     if (rendered === session.lastRendered) return;
     session.lastRendered = rendered;
 

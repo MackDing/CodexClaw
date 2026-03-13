@@ -1,5 +1,9 @@
 import { Markup } from "telegraf";
-import { buildPlanPrompt, extractCommandPayload } from "./commandUtils.js";
+import {
+  buildPlanPrompt,
+  extractCommandPayload,
+  suggestClosestWord
+} from "./commandUtils.js";
 import { escapeMarkdownV2, splitTelegramMessage } from "./formatter.js";
 
 async function sendChunkedMarkdown(ctx, text, extra = {}) {
@@ -46,6 +50,21 @@ function formatProjectLines(projects, currentWorkdir) {
 
 function formatSkillLines(skillStates) {
   return skillStates.map((skill) => `- ${skill.name}: ${skill.enabled ? "on" : "off"}`);
+}
+
+function suggestProjectName(input, projects) {
+  const candidates = [
+    ...new Set(
+      projects.flatMap((project) => [project.relativePath, project.name]).filter(Boolean)
+    )
+  ];
+
+  const threshold = Math.min(
+    6,
+    Math.max(2, Math.ceil(String(input || "").trim().length * 0.35))
+  );
+
+  return suggestClosestWord(input, candidates, threshold);
 }
 
 export function registerHandlers({
@@ -209,6 +228,13 @@ export function registerHandlers({
           );
 
           if (!matches.length) {
+            const suggestion = suggestProjectName(payload, projects);
+            if (suggestion) {
+              throw new Error(
+                `没有匹配的项目: ${payload}\n你是不是想找: ${suggestion}\ntry: /repo ${suggestion}`
+              );
+            }
+
             throw new Error(`没有匹配的项目: ${payload}`);
           }
 

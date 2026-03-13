@@ -24,3 +24,10 @@ test("suggestClosestWord returns the nearest supported command when the typo is 
   assert.equal(suggestClosestWord("ststus", ["list", "status", "tools"]), "status");
   assert.equal(suggestClosestWord("zzz", ["list", "status", "tools"]), "");
 });
+
+test("suggestClosestWord supports larger edit distances when the caller relaxes the threshold", () => {
+  assert.equal(
+    suggestClosestWord("ai-engineer-hub", ["ai-engineering-hub"], 6),
+    "ai-engineering-hub"
+  );
+});

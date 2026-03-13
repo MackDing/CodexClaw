@@ -125,6 +125,7 @@ General:
 - `/repo` - list switchable git projects under `WORKSPACE_ROOT`
 - `/repo <name>` - switch the current chat to another project
 - `/repo <keyword>` - fuzzy match projects; switch if only one match, otherwise list candidates
+- `/repo <typo>` - suggests the closest project name when there is no direct match
 - `/repo recent` - show recent projects for the current chat
 - `/repo -` - switch back to the previous project
 - `/new` - clear the saved Codex conversation for the current project and start fresh on the next message
@@ -186,6 +187,7 @@ PTY output is streamed with throttled `editMessageText` updates.
   - spoiler (`||...||`, default)
   - quote block (if `REASONING_RENDER_MODE=quote`)
 - If `node-pty` cannot spawn on the current host, the runner falls back to `codex exec` for per-request execution
+- In `codex exec` fallback mode, Telegram output is cleaned to hide the Codex banner, raw tool trace, `mcp startup`, and duplicate `tokens used` footer
 
 ## Project-Scoped Conversation State
 

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   escapeMarkdownV2,
+  extractCodexExecResponse,
   extractReasoning,
   formatPtyOutput,
   splitTelegramMessage
@@ -32,6 +33,60 @@ test("formatPtyOutput renders visible output and spoiler reasoning", () => {
   assert.match(rendered, /done/);
   assert.match(rendered, /Reasoning Stream/);
   assert.match(rendered, /\|\|private reasoning\|\|/);
+});
+
+test("extractCodexExecResponse strips codex exec transcript noise and keeps the final assistant reply", () => {
+  const raw = [
+    "OpenAI Codex v0.114.0 (research preview)",
+    "--------",
+    "workdir: /tmp/demo",
+    "model: gpt-5.4",
+    "session id: 11111111-1111-1111-1111-111111111111",
+    "--------",
+    "user",
+    "run unit test",
+    "mcp startup: no servers",
+    "codex",
+    "I’m checking the repository layout first.",
+    "exec",
+    "/bin/zsh -lc 'npm test' succeeded in 1.07s:",
+    "ok",
+    "codex",
+    "`npm test` passed.",
+    "",
+    "15 tests ran, 15 passed, 0 failed.",
+    "tokens used",
+    "8,301",
+    "`npm test` passed.",
+    "",
+    "15 tests ran, 15 passed, 0 failed."
+  ].join("\n");
+
+  assert.equal(
+    extractCodexExecResponse(raw),
+    "`npm test` passed.\n\n15 tests ran, 15 passed, 0 failed."
+  );
+});
+
+test("formatPtyOutput uses cleaned codex exec content when session mode is exec", () => {
+  const raw = [
+    "OpenAI Codex v0.114.0 (research preview)",
+    "--------",
+    "workdir: /tmp/demo",
+    "--------",
+    "user",
+    "who are u",
+    "mcp startup: no servers",
+    "codex",
+    "I am Codex."
+  ].join("\n");
+
+  const rendered = formatPtyOutput(raw, {
+    mode: "spoiler",
+    sessionMode: "exec"
+  });
+
+  assert.equal(rendered, "I am Codex\\.");
 });
 
 test("splitTelegramMessage preserves content and avoids trailing escape characters in chunks", () => {
