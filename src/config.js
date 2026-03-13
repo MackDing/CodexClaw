@@ -101,6 +101,10 @@ export function loadConfig() {
   const shellAllowedCommands = Array.isArray(rawShellAllowedCommands)
     ? rawShellAllowedCommands.map((value) => String(value).trim()).filter(Boolean)
     : [];
+  const rawShellDangerousCommands = parseJson(process.env.SHELL_DANGEROUS_COMMANDS, []);
+  const shellDangerousCommands = Array.isArray(rawShellDangerousCommands)
+    ? rawShellDangerousCommands.map((value) => String(value).trim()).filter(Boolean)
+    : [];
   const shellEnabled = parseBoolean(process.env.SHELL_ENABLED, false);
 
   if (shellEnabled && !shellAllowedCommands.length) {
@@ -132,7 +136,9 @@ export function loadConfig() {
     },
     shell: {
       enabled: shellEnabled,
+      readOnly: parseBoolean(process.env.SHELL_READ_ONLY, true),
       allowedCommands: shellAllowedCommands,
+      dangerousCommands: shellDangerousCommands,
       timeoutMs: parseNumber(process.env.SHELL_TIMEOUT_MS, 20000),
       maxOutputChars: parseNumber(process.env.SHELL_MAX_OUTPUT_CHARS, 12000)
     },

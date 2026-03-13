@@ -16,10 +16,17 @@ export class ShellManager {
     this.config = config;
     this.runningJobs = new Map();
     this.allowedPrefixes = config.shell.allowedCommands.map((command) => parseCommandLine(command));
+    this.dangerousPrefixes = (config.shell.dangerousCommands || []).map((command) =>
+      parseCommandLine(command)
+    );
   }
 
   isEnabled() {
     return this.config.shell.enabled;
+  }
+
+  isReadOnly() {
+    return this.config.shell.readOnly;
   }
 
   isBusy(chatId) {
@@ -30,12 +37,23 @@ export class ShellManager {
     return [...this.config.shell.allowedCommands];
   }
 
-  validateCommand(rawCommand) {
+  getDangerousCommands() {
+    return [...(this.config.shell.dangerousCommands || [])];
+  }
+
+  inspectCommand(rawCommand) {
     if (!this.isEnabled()) {
       throw new Error("受限 Shell 功能未启用。先在 .env 中设置 SHELL_ENABLED=true。");
     }
 
-    const commandText = String(rawCommand || "").trim();
+    let commandText = String(rawCommand || "").trim();
+    let confirmed = false;
+
+    if (/^--confirm\s+/i.test(commandText)) {
+      confirmed = true;
+      commandText = commandText.replace(/^--confirm\s+/i, "").trim();
+    }
+
     if (!commandText) {
       throw new Error("用法: /sh <command>");
     }
@@ -55,7 +73,28 @@ export class ShellManager {
       );
     }
 
-    return argv;
+    const dangerous = matchesAllowedCommandPrefix(argv, this.dangerousPrefixes);
+    if (dangerous && this.isReadOnly()) {
+      throw new Error("当前 /sh 处于只读模式，禁止执行写操作命令。");
+    }
+
+    return {
+      argv,
+      commandText,
+      confirmed,
+      dangerous,
+      requiresConfirmation: dangerous && !confirmed,
+      confirmationCommand: dangerous ? `/sh --confirm ${commandText}` : ""
+    };
+  }
+
+  validateCommand(rawCommand) {
+    const inspected = this.inspectCommand(rawCommand);
+    if (inspected.requiresConfirmation) {
+      throw new Error(`该命令需要二次确认。请发送: ${inspected.confirmationCommand}`);
+    }
+
+    return inspected.argv;
   }
 
   async execute({ chatId, rawCommand, workdir }) {

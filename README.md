@@ -55,7 +55,9 @@ Optional safe shell:
 
 ```bash
 SHELL_ENABLED=true
+SHELL_READ_ONLY=true
 SHELL_ALLOWED_COMMANDS=["pwd","ls","git status","git diff --stat","npm test","npm run check"]
+SHELL_DANGEROUS_COMMANDS=["git add","git commit","git push","rm","mv","cp","npm publish"]
 ```
 
 ### Run
@@ -121,6 +123,7 @@ General:
 - `/pwd` - show the current project directory for this chat
 - `/repo` - list switchable git projects under `WORKSPACE_ROOT`
 - `/repo <name>` - switch the current chat to another project
+- `/repo <keyword>` - fuzzy match projects; switch if only one match, otherwise list candidates
 - `/repo recent` - show recent projects for the current chat
 - `/repo -` - switch back to the previous project
 - `/new` - close current session and start fresh on the next message
@@ -129,6 +132,7 @@ General:
 - `/plan <task>` - ask Codex for a plan only, without direct file modification intent
 - `/model [name|reset]` - show or set the model override for the current chat
 - `/sh <command>` - run a safe allowlisted Linux command in the current project (disabled by default)
+- `/sh --confirm <command>` - confirm a dangerous command when writable mode is enabled
 - `/interrupt` - send `Ctrl+C` to current PTY session
 - `/stop` - terminate current PTY session
 - `/cron_now` - trigger daily summary immediately
@@ -155,6 +159,7 @@ Telegram adaptation notes:
 - `/status` is implemented by the bot and reports local runtime state
 - `/repo` is implemented by the bot and switches the per-chat working directory inside `WORKSPACE_ROOT`
 - `/sh` is implemented by the bot, never invokes a shell interpreter, and only accepts configured command prefixes
+- `/sh` is read-only by default; dangerous prefixes can be configured and require `--confirm` when writable mode is enabled
 - `/plan` translates to a planning-only prompt instead of passing a raw `/plan` slash command to Codex
 
 ## Streaming and Reasoning Visualization
@@ -197,7 +202,9 @@ CODEX_COMMAND=codex
 CODEX_ARGS=
 WORKSPACE_ROOT=/Users/yourname/projects
 SHELL_ENABLED=false
+SHELL_READ_ONLY=true
 SHELL_ALLOWED_COMMANDS=["pwd","ls","git status","git diff --stat","npm test","npm run check"]
+SHELL_DANGEROUS_COMMANDS=["git add","git commit","git push","rm","mv","cp","npm publish"]
 SHELL_TIMEOUT_MS=20000
 SHELL_MAX_OUTPUT_CHARS=12000
 STREAM_THROTTLE_MS=1200
@@ -233,6 +240,8 @@ E2E_TEST_COMMAND=npx playwright test --reporter=line
 - Keep `WORKSPACE_ROOT` limited to a parent directory that only contains projects you want the bot to access
 - Keep `/sh` disabled unless you need it; when enabled, only expose read-only or narrowly scoped command prefixes
 - `/sh` uses `spawn(..., { shell: false })`, rejects pipes/redirection/subshell syntax, and runs inside the current project directory
+- Keep `SHELL_READ_ONLY=true` unless you have a strong reason to allow write commands
+- If you allow write commands, mark high-risk prefixes in `SHELL_DANGEROUS_COMMANDS` and require `/sh --confirm ...`
 - Prefer least-privilege GitHub PAT
 
 ## Should You Enable `/sh`?

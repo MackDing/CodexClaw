@@ -68,6 +68,7 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
         "/pwd - 查看当前项目目录",
         "/repo - 列出可切换项目",
         "/repo <name> - 切换当前 chat 的项目",
+        "/repo <keyword> - 关键词匹配项目并切换/列出候选",
         "/repo recent - 查看最近使用过的项目",
         "/repo - - 切回上一个项目",
         "/new - 新建会话并清空当前上下文",
@@ -76,6 +77,7 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
         "/plan <task> - 仅生成执行计划，不直接修改代码",
         "/model [name|reset] - 查看或设置当前 chat 的模型",
         "/sh <command> - 运行受限 Linux 命令 (默认关闭)",
+        "/sh --confirm <command> - 确认执行高风险命令",
         "/interrupt - 向 Codex CLI 发送 Ctrl+C",
         "/stop - 终止当前 chat 的 PTY 会话",
         "/cron_now - 立即触发一次日报推送",
@@ -103,7 +105,11 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
         `workspace root: ${status.workspaceRoot}`,
         `workdir: ${status.workdir}`,
         `recent projects: ${ptyManager.getRecentProjects(ctx.chat.id).map((item) => item.relativePath).join(", ") || "."}`,
-        `safe shell: ${shellManager.isEnabled() ? `enabled (${shellManager.getAllowedCommands().length} prefixes)` : "disabled"}`,
+        `safe shell: ${
+          shellManager.isEnabled()
+            ? `enabled, ${shellManager.isReadOnly() ? "read-only" : "writable"} (${shellManager.getAllowedCommands().length} prefixes)`
+            : "disabled"
+        }`,
         `mcp servers: ${status.mcpServers.length ? status.mcpServers.join(", ") : "none"}`
       ].join("\n")
     );
@@ -163,8 +169,44 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
     }
 
     try {
+      let target = payload;
+      if (payload !== "-") {
+        const projects = ptyManager.listProjects();
+        const exact = projects.find(
+          (project) => project.relativePath === payload || project.name === payload
+        );
+
+        if (!exact) {
+          const lowerPayload = payload.toLowerCase();
+          const matches = projects.filter((project) =>
+            project.relativePath.toLowerCase().includes(lowerPayload)
+          );
+
+          if (!matches.length) {
+            throw new Error(`没有匹配的项目: ${payload}`);
+          }
+
+          if (matches.length > 1) {
+            await sendChunkedMarkdown(
+              ctx,
+              [
+                `找到多个匹配项目: ${payload}`,
+                ...formatProjectLines(matches, status.workdir),
+                "",
+                "请使用更精确的名称。"
+              ].join("\n")
+            );
+            return;
+          }
+
+          target = matches[0].relativePath;
+        }
+      }
+
       const result =
-        payload === "-" ? ptyManager.switchToPreviousWorkdir(ctx.chat.id) : ptyManager.switchWorkdir(ctx.chat.id, payload);
+        target === "-"
+          ? ptyManager.switchToPreviousWorkdir(ctx.chat.id)
+          : ptyManager.switchWorkdir(ctx.chat.id, target);
       await sendChunkedMarkdown(
         ctx,
         [
@@ -223,9 +265,21 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
 
     let validation;
     try {
-      validation = shellManager.validateCommand(command);
+      validation = shellManager.inspectCommand(command);
     } catch (error) {
       await sendChunkedMarkdown(ctx, error.message);
+      return;
+    }
+
+    if (validation.requiresConfirmation) {
+      await sendChunkedMarkdown(
+        ctx,
+        [
+          "该命令被标记为高风险，需要二次确认。",
+          `command: ${validation.commandText}`,
+          `confirm with: ${validation.confirmationCommand}`
+        ].join("\n")
+      );
       return;
     }
 
@@ -234,7 +288,7 @@ export function registerHandlers({ bot, router, ptyManager, shellManager, skills
       [
         "Running safe shell command...",
         `workdir: ${status.workdir}`,
-        `command: ${validation.join(" ")}`
+        `command: ${validation.argv.join(" ")}`
       ].join("\n")
     );
 

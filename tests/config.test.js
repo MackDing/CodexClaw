@@ -11,7 +11,9 @@ const ENV_KEYS = [
   "CODEX_WORKDIR",
   "WORKSPACE_ROOT",
   "SHELL_ENABLED",
+  "SHELL_READ_ONLY",
   "SHELL_ALLOWED_COMMANDS",
+  "SHELL_DANGEROUS_COMMANDS",
   "SHELL_TIMEOUT_MS",
   "SHELL_MAX_OUTPUT_CHARS",
   "STREAM_THROTTLE_MS",
@@ -71,7 +73,9 @@ test("loadConfig parses env values into runtime config", () => {
       CODEX_WORKDIR: ".",
       WORKSPACE_ROOT: ".",
       SHELL_ENABLED: "true",
+      SHELL_READ_ONLY: "false",
       SHELL_ALLOWED_COMMANDS: '["pwd","git status","npm test"]',
+      SHELL_DANGEROUS_COMMANDS: '["git push","git commit"]',
       SHELL_TIMEOUT_MS: "15000",
       SHELL_MAX_OUTPUT_CHARS: "4096",
       STREAM_THROTTLE_MS: "1500",
@@ -95,7 +99,9 @@ test("loadConfig parses env values into runtime config", () => {
   assert.equal(config.runner.command, "codex");
   assert.equal(config.workspace.root, process.cwd());
   assert.equal(config.shell.enabled, true);
+  assert.equal(config.shell.readOnly, false);
   assert.deepEqual(config.shell.allowedCommands, ["pwd", "git status", "npm test"]);
+  assert.deepEqual(config.shell.dangerousCommands, ["git push", "git commit"]);
   assert.equal(config.shell.timeoutMs, 15000);
   assert.equal(config.shell.maxOutputChars, 4096);
   assert.deepEqual(config.runner.args, ["--approval-mode", "auto", "--model gpt-5"]);

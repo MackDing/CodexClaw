@@ -10,7 +10,9 @@ function createShellManager(overrides = {}) {
     config: {
       shell: {
         enabled: overrides.enabled ?? true,
+        readOnly: overrides.readOnly ?? true,
         allowedCommands: overrides.allowedCommands ?? ["pwd", "git status", "npm test"],
+        dangerousCommands: overrides.dangerousCommands ?? ["git push", "git commit"],
         timeoutMs: overrides.timeoutMs ?? 5000,
         maxOutputChars: overrides.maxOutputChars ?? 4000
       }
@@ -32,6 +34,40 @@ test("shell manager rejects shell metacharacters and commands outside the allowl
 
   assert.throws(() => manager.validateCommand("git status && pwd"), /不支持管道、重定向、命令替换或多条 shell 语句/);
   assert.throws(() => manager.validateCommand("rm -rf ."), /命令不在白名单中/);
+});
+
+test("shell manager marks dangerous commands for confirmation when writable", () => {
+  const manager = createShellManager({
+    readOnly: false,
+    allowedCommands: ["git push", "git status"]
+  });
+
+  const inspection = manager.inspectCommand("git push");
+
+  assert.equal(inspection.dangerous, true);
+  assert.equal(inspection.requiresConfirmation, true);
+  assert.equal(inspection.confirmationCommand, "/sh --confirm git push");
+});
+
+test("shell manager blocks dangerous commands in read-only mode", () => {
+  const manager = createShellManager({
+    readOnly: true,
+    allowedCommands: ["git push", "git status"]
+  });
+
+  assert.throws(() => manager.inspectCommand("git push"), /当前 \/sh 处于只读模式/);
+});
+
+test("shell manager allows confirmed dangerous commands when writable", () => {
+  const manager = createShellManager({
+    readOnly: false,
+    allowedCommands: ["git push", "git status"]
+  });
+
+  const inspection = manager.inspectCommand("--confirm git push");
+
+  assert.equal(inspection.requiresConfirmation, false);
+  assert.deepEqual(inspection.argv, ["git", "push"]);
 });
 
 test("shell manager executes an allowed command without invoking a shell", async () => {
