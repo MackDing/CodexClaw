@@ -1,0 +1,35 @@
+{
+  "name": "codex-telegram-claws",
+  "version": "0.1.0",
+  "description": "A super Telegram bot that securely orchestrates Codex CLI with PTY streaming, MCP routing, and GitHub automation skills.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "check": "node --check src/index.js"
+  },
+  "keywords": [
+    "telegram",
+    "telegraf",
+    "codex",
+    "node-pty",
+    "mcp",
+    "agent"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.13.2",
+    "@octokit/rest": "^22.0.0",
+    "dotenv": "^16.4.7",
+    "lodash.throttle": "^4.1.1",
+    "node-cron": "^4.0.5",
+    "node-pty": "^1.0.0",
+    "simple-git": "^3.28.0",
+    "strip-ansi": "^7.1.0",
+    "telegraf": "^4.16.3"
+  }
+}
