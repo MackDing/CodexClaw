@@ -109,7 +109,9 @@ export class McpSkill {
 
       const result = await this.mcpClient.enableServer(serverName);
       return {
-        text: `${result.name} 已启用。connected: ${result.connected ? "yes" : "no"}`
+        text: result.changed
+          ? `${result.name} 已启用。connected: ${result.connected ? "yes" : "no"}`
+          : `${result.name} 已处于启用状态。connected: ${result.connected ? "yes" : "no"}`
       };
     }
 
@@ -121,7 +123,9 @@ export class McpSkill {
 
       const result = await this.mcpClient.disableServer(serverName);
       return {
-        text: `${result.name} 已禁用。connected: ${result.connected ? "yes" : "no"}`
+        text: result.changed
+          ? `${result.name} 已禁用。connected: ${result.connected ? "yes" : "no"}`
+          : `${result.name} 已处于禁用状态。connected: ${result.connected ? "yes" : "no"}`
       };
     }
 

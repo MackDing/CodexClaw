@@ -20,12 +20,14 @@ test("skill registry toggles skills per chat without affecting other chats", () 
     mcp: {}
   });
 
-  registry.disable(1, "github");
+  const disabled = registry.disable(1, "github");
 
+  assert.equal(disabled.changed, true);
   assert.equal(registry.isEnabled(1, "github"), false);
   assert.equal(registry.isEnabled(2, "github"), true);
 
-  registry.enable(1, "github");
+  const enabled = registry.enable(1, "github");
+  assert.equal(enabled.changed, true);
   assert.equal(registry.isEnabled(1, "github"), true);
 });
 
@@ -53,4 +55,15 @@ test("skill registry exports and restores chat state", () => {
 
   assert.equal(restored.isEnabled(1, "github"), false);
   assert.equal(restored.isEnabled(1, "mcp"), true);
+});
+
+test("skill registry reports idempotent enable and disable operations", () => {
+  const registry = new SkillRegistry({
+    github: {},
+    mcp: {}
+  });
+
+  assert.equal(registry.enable(1, "github").changed, false);
+  assert.equal(registry.disable(1, "github").changed, true);
+  assert.equal(registry.disable(1, "github").changed, false);
 });

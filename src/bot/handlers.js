@@ -55,7 +55,8 @@ export function registerHandlers({
   shellManager,
   skills,
   skillRegistry,
-  scheduler
+  scheduler,
+  adminActions
 }) {
   bot.start(async (ctx) => {
     await sendChunkedMarkdown(
@@ -94,6 +95,7 @@ export function registerHandlers({
         "/skill off <name> - 禁用 skill",
         "/sh <command> - 运行受限 Linux 命令 (默认关闭)",
         "/sh --confirm <command> - 确认执行高风险命令",
+        "/restart - 重启 bot 进程",
         "/interrupt - 向 Codex CLI 发送 Ctrl+C",
         "/stop - 终止当前 chat 的 PTY 会话",
         "/cron_now - 立即触发一次日报推送",
@@ -265,17 +267,29 @@ export function registerHandlers({
     }
 
     try {
+      const actionResult = /^on$/i.test(action)
+        ? skillRegistry.enable(ctx.chat.id, rawName)
+        : skillRegistry.disable(ctx.chat.id, rawName);
       if (/^on$/i.test(action)) {
-        skillRegistry.enable(ctx.chat.id, rawName);
-      } else {
-        skillRegistry.disable(ctx.chat.id, rawName);
+        await sendChunkedMarkdown(
+          ctx,
+          [
+            actionResult.changed
+              ? `skill ${rawName} 已启用。`
+              : `skill ${rawName} 已处于启用状态。`,
+            ...formatSkillLines(actionResult.skills)
+          ].join("\n")
+        );
+        return;
       }
 
       await sendChunkedMarkdown(
         ctx,
         [
-          `skill ${rawName} 已${/^on$/i.test(action) ? "启用" : "禁用"}。`,
-          ...formatSkillLines(skillRegistry.list(ctx.chat.id))
+          actionResult.changed
+            ? `skill ${rawName} 已禁用。`
+            : `skill ${rawName} 已处于禁用状态。`,
+          ...formatSkillLines(actionResult.skills)
         ].join("\n")
       );
     } catch (error) {
@@ -291,6 +305,16 @@ export function registerHandlers({
         ? "当前会话已关闭。下一条消息会启动一个新的 Codex 会话。"
         : "当前没有活动会话。下一条消息会启动新的 Codex 会话。"
     );
+  });
+
+  bot.command("restart", async (ctx) => {
+    if (!adminActions?.restart) {
+      await sendChunkedMarkdown(ctx, "当前环境未启用 bot 重启控制。");
+      return;
+    }
+
+    await sendChunkedMarkdown(ctx, "正在重启 bot 进程...");
+    await adminActions.restart();
   });
 
   bot.command("exec", async (ctx) => {
@@ -527,6 +551,10 @@ export function registerHandlers({
   bot.on("text", async (ctx) => {
     const text = ctx.message.text?.trim() || "";
     if (!text) return;
+    if (/^(重启\s*bot|重启机器人|restart bot)$/i.test(text)) {
+      await sendChunkedMarkdown(ctx, "请使用 /restart，而不是把它当作普通消息发送。");
+      return;
+    }
     if (/^\/\s+\S+/.test(text)) {
       await sendChunkedMarkdown(
         ctx,

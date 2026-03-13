@@ -55,3 +55,28 @@ test("mcp skill returns expanded help text when no subcommand is provided", asyn
   assert.match(result.text, /\/mcp list/);
   assert.match(result.text, /\/mcp status \[server\]/);
 });
+
+test("mcp skill returns idempotent enable feedback", async () => {
+  const skill = new McpSkill({
+    mcpClient: {
+      hasServers: () => true,
+      listServers: () => [],
+      reconnectServer: async () => null,
+      enableServer: async (name) => ({
+        name,
+        enabled: true,
+        connected: true,
+        changed: false
+      }),
+      disableServer: async () => null,
+      listTools: async () => [],
+      callTool: async () => ""
+    }
+  });
+
+  const result = await skill.execute({
+    text: "/mcp enable context7"
+  });
+
+  assert.match(result.text, /已处于启用状态/);
+});

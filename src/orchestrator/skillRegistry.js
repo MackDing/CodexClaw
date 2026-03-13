@@ -47,17 +47,29 @@ export class SkillRegistry {
   enable(chatId, name) {
     const normalized = this.ensureKnownSkill(name);
     const state = this.ensureChatState(chatId);
+    const changed = !state.enabledSkills.has(normalized);
     state.enabledSkills.add(normalized);
-    this.onChange?.(this.exportState());
-    return this.list(chatId);
+    if (changed) {
+      this.onChange?.(this.exportState());
+    }
+    return {
+      changed,
+      skills: this.list(chatId)
+    };
   }
 
   disable(chatId, name) {
     const normalized = this.ensureKnownSkill(name);
     const state = this.ensureChatState(chatId);
+    const changed = state.enabledSkills.has(normalized);
     state.enabledSkills.delete(normalized);
-    this.onChange?.(this.exportState());
-    return this.list(chatId);
+    if (changed) {
+      this.onChange?.(this.exportState());
+    }
+    return {
+      changed,
+      skills: this.list(chatId)
+    };
   }
 
   exportState() {

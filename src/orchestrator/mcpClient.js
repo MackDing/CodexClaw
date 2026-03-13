@@ -146,10 +146,16 @@ export class McpClient {
       throw new Error(`Unknown MCP server: ${serverName}`);
     }
 
+    if (this.disabledServers.has(serverName)) {
+      const current = this.listServers().find((server) => server.name === serverName) || null;
+      return current ? { ...current, changed: false } : null;
+    }
+
     this.disabledServers.add(serverName);
     await this.disconnectServer(serverName);
     this.onChange?.(this.exportState());
-    return this.listServers().find((server) => server.name === serverName) || null;
+    const current = this.listServers().find((server) => server.name === serverName) || null;
+    return current ? { ...current, changed: true } : null;
   }
 
   async enableServer(serverName) {
@@ -157,10 +163,17 @@ export class McpClient {
       throw new Error(`Unknown MCP server: ${serverName}`);
     }
 
+    if (!this.disabledServers.has(serverName) && this.isServerConnected(serverName)) {
+      const current = this.listServers().find((server) => server.name === serverName) || null;
+      return current ? { ...current, changed: false } : null;
+    }
+
+    const changed = this.disabledServers.has(serverName);
     this.disabledServers.delete(serverName);
     await this.connectServerByName(serverName);
     this.onChange?.(this.exportState());
-    return this.listServers().find((server) => server.name === serverName) || null;
+    const current = this.listServers().find((server) => server.name === serverName) || null;
+    return current ? { ...current, changed } : null;
   }
 
   exportState() {

@@ -138,6 +138,7 @@ General:
 - `/skill off <name>` - disable a skill for the current chat
 - `/sh <command>` - run a safe allowlisted Linux command in the current project (disabled by default)
 - `/sh --confirm <command>` - confirm a dangerous command when writable mode is enabled
+- `/restart` - restart the bot process explicitly from Telegram
 - `/interrupt` - send `Ctrl+C` to current PTY session
 - `/stop` - terminate current PTY session
 - `/cron_now` - trigger daily summary immediately

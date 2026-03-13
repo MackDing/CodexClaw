@@ -55,11 +55,13 @@ test("mcp client disable and enable update runtime state", async () => {
     });
   };
 
-  await client.disableServer("context7");
+  const disabled = await client.disableServer("context7");
+  assert.equal(disabled.changed, true);
   assert.equal(client.isServerEnabled("context7"), false);
   assert.equal(client.isServerConnected("context7"), false);
 
-  await client.enableServer("context7");
+  const enabled = await client.enableServer("context7");
+  assert.equal(enabled.changed, true);
   assert.equal(client.isServerEnabled("context7"), true);
   assert.equal(client.isServerConnected("context7"), true);
   assert.equal(connectCalls, 1);
@@ -104,4 +106,24 @@ test("mcp client exports and restores disabled server state", () => {
   });
   assert.equal(client.isServerEnabled("sequential-thinking"), false);
   assert.equal(client.isServerEnabled("context7"), true);
+});
+
+test("mcp client reports idempotent enable and disable operations", async () => {
+  const client = createClient();
+  client.connectServer = async (server) => {
+    client.connections.set(server.name, {
+      transport: {
+        close: async () => {}
+      }
+    });
+  };
+  client.connections.set("context7", {
+    transport: {
+      close: async () => {}
+    }
+  });
+
+  assert.equal((await client.enableServer("context7")).changed, false);
+  assert.equal((await client.disableServer("context7")).changed, true);
+  assert.equal((await client.disableServer("context7")).changed, false);
 });

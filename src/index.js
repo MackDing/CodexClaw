@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import process from "node:process";
 import { Telegraf } from "telegraf";
 import { loadConfig } from "./config.js";
 import { RuntimeStateStore } from "./runtimeStateStore.js";
@@ -26,6 +28,28 @@ async function saveRuntimeState() {
     mcp: mcpClient.exportState(),
     skills: skillRegistry.exportState()
   });
+}
+
+async function restartBotProcess() {
+  await saveRuntimeState();
+
+  const bootstrapScript = [
+    "const { spawn } = require('node:child_process');",
+    "setTimeout(() => {",
+    `  const child = spawn(process.execPath, ['src/index.js'], { cwd: ${JSON.stringify(process.cwd())}, env: process.env, detached: true, stdio: 'ignore' });`,
+    "  child.unref();",
+    "}, 1500);"
+  ].join("\n");
+
+  const launcher = spawn(process.execPath, ["-e", bootstrapScript], {
+    cwd: process.cwd(),
+    env: process.env,
+    detached: true,
+    stdio: "ignore"
+  });
+  launcher.unref();
+
+  await shutdown("RESTART");
 }
 
 bot.use(createAuthMiddleware(config));
@@ -76,7 +100,10 @@ registerHandlers({
   shellManager,
   skills,
   skillRegistry,
-  scheduler
+  scheduler,
+  adminActions: {
+    restart: restartBotProcess
+  }
 });
 
 bot.catch(async (error, ctx) => {
