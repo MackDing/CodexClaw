@@ -1,4 +1,5 @@
 import { Markup } from "telegraf";
+import { buildPlanPrompt, extractCommandPayload } from "./commandUtils.js";
 import { escapeMarkdownV2, splitTelegramMessage } from "./formatter.js";
 
 async function sendChunkedMarkdown(ctx, text, extra = {}) {
@@ -44,6 +45,7 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
         "codex-telegram-claws ready.",
         "普通消息和编码任务会路由到 Codex。",
         "MCP 只在显式 /mcp 命令下调用。",
+        "试试: /status, /exec, /auto, /plan, /model, /new",
         "GitHub 指令示例: /gh commit \"feat: init\""
       ].join("\n")
     );
@@ -55,12 +57,143 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
       [
         "Commands:",
         "/help - 显示帮助",
+        "/status - 查看当前 chat 的运行状态",
+        "/new - 新建会话并清空当前上下文",
+        "/exec <task> - 强制用 codex exec 运行一次任务",
+        "/auto <task> - 强制用 codex exec --full-auto 运行任务",
+        "/plan <task> - 仅生成执行计划，不直接修改代码",
+        "/model [name|reset] - 查看或设置当前 chat 的模型",
         "/interrupt - 向 Codex CLI 发送 Ctrl+C",
         "/stop - 终止当前 chat 的 PTY 会话",
         "/cron_now - 立即触发一次日报推送",
         "/gh ... - GitHub skill",
         "/mcp ... - MCP skill (显式调用)"
       ].join("\n")
+    );
+  });
+
+  bot.command("status", async (ctx) => {
+    const status = ptyManager.getStatus(ctx.chat.id);
+    await sendChunkedMarkdown(
+      ctx,
+      [
+        "Status:",
+        `active: ${status.active ? "yes" : "no"}`,
+        `active mode: ${status.activeMode || "idle"}`,
+        `last mode: ${status.lastMode || "none"}`,
+        `last exit: ${status.lastExitCode === null ? "n/a" : status.lastExitCode}`,
+        `pty supported: ${
+          status.ptySupported === null ? "unknown" : status.ptySupported ? "yes" : "no (exec fallback)"
+        }`,
+        `preferred model: ${status.preferredModel || "inherit codex default"}`,
+        `command: ${status.command}`,
+        `workdir: ${status.workdir}`,
+        `mcp servers: ${status.mcpServers.length ? status.mcpServers.join(", ") : "none"}`
+      ].join("\n")
+    );
+  });
+
+  bot.command("new", async (ctx) => {
+    const closed = ptyManager.closeSession(ctx.chat.id);
+    await sendChunkedMarkdown(
+      ctx,
+      closed
+        ? "当前会话已关闭。下一条消息会启动一个新的 Codex 会话。"
+        : "当前没有活动会话。下一条消息会启动新的 Codex 会话。"
+    );
+  });
+
+  bot.command("exec", async (ctx) => {
+    const task = extractCommandPayload(ctx.message.text, "exec");
+    if (!task) {
+      await sendChunkedMarkdown(ctx, "用法: /exec <task>");
+      return;
+    }
+
+    const result = await ptyManager.sendPrompt(ctx, task, {
+      forceExec: true,
+      notice: "Running one-off `codex exec` task..."
+    });
+
+    if (!result.started) {
+      await sendChunkedMarkdown(
+        ctx,
+        `当前已有 ${result.activeMode || "unknown"} 任务在运行。请等待完成或先使用 /interrupt。`
+      );
+    }
+  });
+
+  bot.command("auto", async (ctx) => {
+    const task = extractCommandPayload(ctx.message.text, "auto");
+    if (!task) {
+      await sendChunkedMarkdown(ctx, "用法: /auto <task>");
+      return;
+    }
+
+    const result = await ptyManager.sendPrompt(ctx, task, {
+      forceExec: true,
+      fullAuto: true,
+      notice: "Running one-off `codex exec --full-auto` task..."
+    });
+
+    if (!result.started) {
+      await sendChunkedMarkdown(
+        ctx,
+        `当前已有 ${result.activeMode || "unknown"} 任务在运行。请等待完成或先使用 /interrupt。`
+      );
+    }
+  });
+
+  bot.command("plan", async (ctx) => {
+    const task = extractCommandPayload(ctx.message.text, "plan");
+    if (!task) {
+      await sendChunkedMarkdown(ctx, "用法: /plan <task>");
+      return;
+    }
+
+    const result = await ptyManager.sendPrompt(ctx, buildPlanPrompt(task), {
+      forceExec: true,
+      notice: "Running planning-only Codex task..."
+    });
+
+    if (!result.started) {
+      await sendChunkedMarkdown(
+        ctx,
+        `当前已有 ${result.activeMode || "unknown"} 任务在运行。请等待完成或先使用 /interrupt。`
+      );
+    }
+  });
+
+  bot.command("model", async (ctx) => {
+    const value = extractCommandPayload(ctx.message.text, "model");
+    if (!value) {
+      const status = ptyManager.getStatus(ctx.chat.id);
+      await sendChunkedMarkdown(
+        ctx,
+        `当前模型: ${status.preferredModel || "inherit codex default"}`
+      );
+      return;
+    }
+
+    if (/^(reset|default|inherit)$/i.test(value)) {
+      ptyManager.clearPreferredModel(ctx.chat.id);
+      const closed = ptyManager.closeSession(ctx.chat.id);
+      await sendChunkedMarkdown(
+        ctx,
+        closed
+          ? "模型已重置为 Codex 默认值，并重建了当前会话。"
+          : "模型已重置为 Codex 默认值。"
+      );
+      return;
+    }
+
+    ptyManager.setPreferredModel(ctx.chat.id, value);
+    const closed = ptyManager.closeSession(ctx.chat.id);
+    await sendChunkedMarkdown(
+      ctx,
+      closed
+        ? `模型已设置为 ${value}，并重建了当前会话。`
+        : `模型已设置为 ${value}。`
     );
   });
 
@@ -85,7 +218,7 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
 
   bot.command("gh", async (ctx) => {
     try {
-      const text = ctx.message.text.replace(/^\/gh(@\w+)?\s*/i, "").trim() || "help";
+      const text = extractCommandPayload(ctx.message.text, "gh") || "help";
       const result = await skills.github.execute({ text: `/gh ${text}`, ctx });
       await sendSkillResult(ctx, result);
     } catch (error) {
@@ -126,7 +259,13 @@ export function registerHandlers({ bot, router, ptyManager, skills, scheduler })
     try {
       const route = await router.routeMessage(text);
       if (route.target === "pty") {
-        await ptyManager.sendPrompt(ctx, route.prompt);
+        const result = await ptyManager.sendPrompt(ctx, route.prompt);
+        if (!result.started) {
+          await sendChunkedMarkdown(
+            ctx,
+            `当前已有 ${result.activeMode || "unknown"} 任务在运行。请等待完成或先使用 /interrupt。`
+          );
+        }
         return;
       }
 

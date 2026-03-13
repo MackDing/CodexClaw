@@ -109,6 +109,12 @@ General:
 
 - `/start` - bootstrap message
 - `/help` - command summary
+- `/status` - show current chat status, active runner mode, workdir, model override, MCP servers
+- `/new` - close current session and start fresh on the next message
+- `/exec <task>` - force a one-off `codex exec`
+- `/auto <task>` - force a one-off `codex exec --full-auto`
+- `/plan <task>` - ask Codex for a plan only, without direct file modification intent
+- `/model [name|reset]` - show or set the model override for the current chat
 - `/interrupt` - send `Ctrl+C` to current PTY session
 - `/stop` - terminate current PTY session
 - `/cron_now` - trigger daily summary immediately
@@ -125,6 +131,15 @@ GitHub skill:
 - `/gh create repo my-new-repo` -> create repo and bind origin
 - `/gh run tests` -> launch test job
 - `/gh test status <jobId>` -> read test status/output tail
+
+Telegram adaptation notes:
+
+- Plain text messages behave like `codex "task description"`
+- `/exec` behaves like `codex exec "task"`
+- `/auto` behaves like `codex exec --full-auto "task"`
+- `/new` is implemented by the bot and resets the current chat session
+- `/status` is implemented by the bot and reports local runtime state
+- `/plan` translates to a planning-only prompt instead of passing a raw `/plan` slash command to Codex
 
 ## Streaming and Reasoning Visualization
 

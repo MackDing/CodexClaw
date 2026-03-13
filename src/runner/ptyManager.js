@@ -18,13 +18,62 @@ export class PtyManager {
     this.bot = bot;
     this.config = config;
     this.sessions = new Map();
+    this.chatState = new Map();
+  }
+
+  ensureChatState(chatId) {
+    const key = String(chatId);
+    const existing = this.chatState.get(key);
+    if (existing) return existing;
+
+    const state = {
+      preferredModel: null,
+      ptySupported: null,
+      lastMode: null,
+      lastExitCode: null,
+      lastExitSignal: null
+    };
+
+    this.chatState.set(key, state);
+    return state;
+  }
+
+  getCommandArgsForSession(chatId) {
+    const state = this.ensureChatState(chatId);
+    const args = [...this.config.runner.args];
+    if (state.preferredModel) {
+      args.push("-m", state.preferredModel);
+    }
+    return args;
+  }
+
+  getExecArgs(chatId, prompt, options = {}) {
+    const state = this.ensureChatState(chatId);
+    const args = ["exec"];
+
+    if (options.fullAuto) {
+      args.push("--full-auto");
+    }
+
+    if (state.preferredModel) {
+      args.push("-m", state.preferredModel);
+    }
+
+    if (Array.isArray(options.extraArgs) && options.extraArgs.length) {
+      args.push(...options.extraArgs);
+    }
+
+    args.push(prompt);
+    return args;
   }
 
   createBaseSession(chatId, mode) {
     const key = String(chatId);
+    const state = this.ensureChatState(key);
     const session = {
       chatId: key,
       mode,
+      model: state.preferredModel,
       proc: null,
       rawBuffer: "",
       streamMessageIds: [],
@@ -58,6 +107,11 @@ export class PtyManager {
 
   attachExit(session, handler) {
     handler(async ({ exitCode, signal }) => {
+      const state = this.ensureChatState(session.chatId);
+      state.lastMode = session.mode;
+      state.lastExitCode = exitCode;
+      state.lastExitSignal = signal;
+
       this.enqueueFlush(session.chatId);
       await this.bot.telegram
         .sendMessage(
@@ -72,7 +126,7 @@ export class PtyManager {
 
   startPtySession(chatId) {
     const session = this.createBaseSession(chatId, "pty");
-    const proc = pty.spawn(this.config.runner.command, this.config.runner.args, {
+    const proc = pty.spawn(this.config.runner.command, this.getCommandArgsForSession(chatId), {
       name: "xterm-256color",
       cols: 120,
       rows: 32,
@@ -83,6 +137,7 @@ export class PtyManager {
       }
     });
 
+    this.ensureChatState(chatId).ptySupported = true;
     session.proc = proc;
     session.write = (input) => proc.write(input);
     session.interrupt = () => proc.write("\u0003");
@@ -100,16 +155,12 @@ export class PtyManager {
     return session;
   }
 
-  startExecSession(chatId, prompt) {
+  startExecSessionWithOptions(chatId, prompt, options = {}) {
     const session = this.createBaseSession(chatId, "exec");
-    const proc = spawn(
-      this.config.runner.command,
-      [...this.config.runner.args, "exec", prompt],
-      {
-        cwd: this.config.runner.cwd,
-        env: process.env
-      }
-    );
+    const proc = spawn(this.config.runner.command, this.getExecArgs(chatId, prompt, options), {
+      cwd: this.config.runner.cwd,
+      env: process.env
+    });
 
     session.proc = proc;
     session.write = null;
@@ -145,6 +196,7 @@ export class PtyManager {
         throw error;
       }
 
+      this.ensureChatState(key).ptySupported = false;
       console.warn(`[runner] PTY spawn failed for chat ${key}; falling back to codex exec mode.`);
       return null;
     }
@@ -212,17 +264,49 @@ export class PtyManager {
     session.streamMessageIds = nextIds;
   }
 
-  async sendPrompt(ctx, prompt) {
+  async sendPrompt(ctx, prompt, options = {}) {
     const chatId = String(ctx.chat.id);
+    if (options.forceExec) {
+      const running = this.sessions.get(chatId);
+      if (running) {
+        return {
+          started: false,
+          reason: "busy",
+          activeMode: running.mode
+        };
+      }
+
+      this.startExecSessionWithOptions(chatId, prompt, {
+        fullAuto: Boolean(options.fullAuto),
+        extraArgs: options.extraArgs || []
+      });
+
+      if (options.notice) {
+        await this.bot.telegram.sendMessage(chatId, options.notice);
+      }
+
+      return {
+        started: true,
+        mode: "exec"
+      };
+    }
+
     let session = this.ensureSession(chatId);
 
     if (!session) {
-      session = this.startExecSession(chatId, prompt);
+      session = this.startExecSessionWithOptions(chatId, prompt, {
+        fullAuto: Boolean(options.fullAuto),
+        extraArgs: options.extraArgs || []
+      });
       await this.bot.telegram.sendMessage(
         chatId,
         "PTY unavailable on this host. Falling back to `codex exec` mode for this request."
       );
-      return;
+      return {
+        started: true,
+        mode: "exec",
+        fallback: true
+      };
     }
 
     if (!session.streamMessageIds.length) {
@@ -234,14 +318,18 @@ export class PtyManager {
     }
 
     if (session.mode === "exec") {
-      await this.bot.telegram.sendMessage(
-        chatId,
-        "A Codex exec task is already running. Wait for it to finish or use /interrupt."
-      );
-      return;
+      return {
+        started: false,
+        reason: "busy",
+        activeMode: session.mode
+      };
     }
 
     session.write(`${prompt}\r`);
+    return {
+      started: true,
+      mode: "pty"
+    };
   }
 
   interrupt(chatId) {
@@ -266,5 +354,35 @@ export class PtyManager {
     for (const chatId of this.sessions.keys()) {
       this.closeSession(chatId);
     }
+  }
+
+  getStatus(chatId) {
+    const key = String(chatId);
+    const state = this.ensureChatState(key);
+    const session = this.sessions.get(key);
+
+    return {
+      active: Boolean(session),
+      activeMode: session?.mode || null,
+      lastMode: state.lastMode,
+      lastExitCode: state.lastExitCode,
+      lastExitSignal: state.lastExitSignal,
+      preferredModel: state.preferredModel,
+      ptySupported: state.ptySupported,
+      workdir: this.config.runner.cwd,
+      command: this.config.runner.command,
+      mcpServers: this.config.mcp.servers.map((server) => server.name)
+    };
+  }
+
+  setPreferredModel(chatId, model) {
+    const state = this.ensureChatState(chatId);
+    state.preferredModel = model?.trim() || null;
+    return state.preferredModel;
+  }
+
+  clearPreferredModel(chatId) {
+    const state = this.ensureChatState(chatId);
+    state.preferredModel = null;
   }
 }
