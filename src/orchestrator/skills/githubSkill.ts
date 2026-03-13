@@ -1,11 +1,57 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
-import simpleGit from "simple-git";
+import { simpleGit } from "simple-git";
 import { Octokit } from "@octokit/rest";
+import type { AppConfig } from "../../config.js";
 import { parseCommandLine } from "../../runner/commandLine.js";
-import { t } from "../../bot/i18n.js";
+import { t, type Locale } from "../../bot/i18n.js";
 
-function buildAutoCommitMessage(status) {
+interface GitStatusResult {
+  files: Array<{ path: string }>;
+}
+
+interface GitBranchResult {
+  current: string;
+}
+
+interface GitRemoteResult {
+  name: string;
+}
+
+interface GitLike {
+  status(): Promise<GitStatusResult>;
+  add(pathspec: string): Promise<unknown>;
+  commit(message: string): Promise<unknown>;
+  branch(): Promise<GitBranchResult>;
+  push(...args: unknown[]): Promise<unknown>;
+  getRemotes(verbose: boolean): Promise<GitRemoteResult[]>;
+  addRemote(name: string, url: string): Promise<unknown>;
+  remote(args: string[]): Promise<unknown>;
+}
+
+interface ExecuteInput {
+  text: string;
+  workdir?: string;
+  locale?: Locale;
+}
+
+export interface GitHubTestJob {
+  jobId: string;
+  status: "running" | "passed" | "failed";
+  workdir: string;
+  command: string;
+  startedAt: string;
+  finishedAt: string;
+  exitCode: number | null;
+  output: string;
+}
+
+interface GitHubSkillResult {
+  text: string;
+  testJobId?: string;
+}
+
+function buildAutoCommitMessage(status: GitStatusResult): string {
   const fileCount = status.files.length;
   const preview = status.files
     .slice(0, 3)
@@ -14,12 +60,12 @@ function buildAutoCommitMessage(status) {
   return `chore: update ${fileCount} file(s)${preview ? ` (${preview})` : ""}`;
 }
 
-function extractQuotedMessage(text) {
+function extractQuotedMessage(text: string): string {
   const matched = text.match(/["“](.+?)["”]/);
   return matched?.[1]?.trim() || "";
 }
 
-function extractRepoName(text) {
+function extractRepoName(text: string): string {
   const patterns = [
     /(?:创建仓库|create repo(?:sitory)?|repo)\s*[:：]?\s*([a-zA-Z0-9._-]+)/i,
     /(?:仓库名|repository)\s*[:：]?\s*([a-zA-Z0-9._-]+)/i
@@ -33,13 +79,18 @@ function extractRepoName(text) {
   return "";
 }
 
-function pickJobId(text, fallbackJobId) {
+function pickJobId(text: string, fallbackJobId: string): string {
   const matched = text.match(/(?:job|任务|#)\s*([a-zA-Z0-9-]+)/i);
   return matched?.[1] || fallbackJobId;
 }
 
 export class GitHubSkill {
-  constructor({ config }) {
+  readonly config: Pick<AppConfig, "github">;
+  readonly octokit: Octokit | null;
+  readonly testJobs: Map<string, GitHubTestJob>;
+  latestTestJobId: string;
+
+  constructor({ config }: { config: Pick<AppConfig, "github"> }) {
     this.config = config;
     this.octokit = config.github.token
       ? new Octokit({ auth: config.github.token })
@@ -48,13 +99,13 @@ export class GitHubSkill {
     this.latestTestJobId = "";
   }
 
-  getGit(workdir) {
+  getGit(workdir?: string): GitLike {
     return simpleGit({
       baseDir: workdir || this.config.github.defaultWorkdir
-    });
+    }) as unknown as GitLike;
   }
 
-  supports(text) {
+  supports(text: string): boolean {
     const normalized = text.toLowerCase();
     return (
       normalized.startsWith("/gh") ||
@@ -64,7 +115,11 @@ export class GitHubSkill {
     );
   }
 
-  async execute({ text, workdir, locale = "en" }) {
+  async execute({
+    text,
+    workdir,
+    locale = "en"
+  }: ExecuteInput): Promise<GitHubSkillResult> {
     const stripped = text.replace(/^\/gh(@\w+)?\s*/i, "").trim();
     const normalized = stripped.toLowerCase();
 
@@ -95,11 +150,15 @@ export class GitHubSkill {
     return { text: this.helpText(locale) };
   }
 
-  helpText(locale = "en") {
+  helpText(locale: Locale = "en"): string {
     return t(locale, "githubHelp");
   }
 
-  async commitAndPush(rawText, workdir, locale = "en") {
+  async commitAndPush(
+    rawText: string,
+    workdir?: string,
+    locale: Locale = "en"
+  ): Promise<GitHubSkillResult> {
     const git = this.getGit(workdir);
     const status = await git.status();
     if (!status.files.length) {
@@ -124,19 +183,22 @@ export class GitHubSkill {
           message: commitMessage
         })
       };
-    } catch (error) {
+    } catch (error: unknown) {
       return {
         text: t(locale, "githubCommitSucceededPushFailed", {
           workdir: workdir || this.config.github.defaultWorkdir,
           branch,
           message: commitMessage,
-          error: error.message
+          error: error instanceof Error ? error.message : String(error)
         })
       };
     }
   }
 
-  async pushOnly(workdir, locale = "en") {
+  async pushOnly(
+    workdir?: string,
+    locale: Locale = "en"
+  ): Promise<GitHubSkillResult> {
     const git = this.getGit(workdir);
     const branchInfo = await git.branch();
     const branch = branchInfo.current || this.config.github.defaultBranch;
@@ -149,7 +211,11 @@ export class GitHubSkill {
     };
   }
 
-  async createRepoFromText(rawText, workdir, locale = "en") {
+  async createRepoFromText(
+    rawText: string,
+    workdir?: string,
+    locale: Locale = "en"
+  ): Promise<GitHubSkillResult> {
     if (!this.octokit) {
       return { text: t(locale, "githubMissingToken") };
     }
@@ -190,7 +256,10 @@ export class GitHubSkill {
     };
   }
 
-  async startTests(workdir, locale = "en") {
+  async startTests(
+    workdir?: string,
+    locale: Locale = "en"
+  ): Promise<GitHubSkillResult> {
     const jobId = `job-${Date.now()}`;
     const command = this.config.github.e2eCommand;
     const argv = parseCommandLine(command);
@@ -198,8 +267,8 @@ export class GitHubSkill {
       return { text: t(locale, "githubEmptyTestCommand") };
     }
 
-    const [binary, ...args] = argv;
-    const job = {
+    const [binary = "", ...args] = argv;
+    const job: GitHubTestJob = {
       jobId,
       status: "running",
       workdir: workdir || this.config.github.defaultWorkdir,
@@ -216,21 +285,25 @@ export class GitHubSkill {
       shell: false
     });
 
-    const appendOutput = (chunk) => {
+    const appendOutput = (chunk: string): void => {
       job.output = `${job.output}${chunk}`;
       if (job.output.length > 5000) {
         job.output = job.output.slice(-5000);
       }
     };
 
-    child.stdout.on("data", (chunk) => appendOutput(String(chunk)));
-    child.stderr.on("data", (chunk) => appendOutput(String(chunk)));
+    child.stdout.on("data", (chunk: Buffer | string) =>
+      appendOutput(String(chunk))
+    );
+    child.stderr.on("data", (chunk: Buffer | string) =>
+      appendOutput(String(chunk))
+    );
     child.on("close", (exitCode) => {
       job.status = exitCode === 0 ? "passed" : "failed";
       job.exitCode = exitCode;
       job.finishedAt = new Date().toISOString();
     });
-    child.on("error", (error) => {
+    child.on("error", (error: Error) => {
       job.status = "failed";
       job.exitCode = -1;
       job.finishedAt = new Date().toISOString();
@@ -250,7 +323,10 @@ export class GitHubSkill {
     };
   }
 
-  async readTestStatusFromText(text, locale = "en") {
+  async readTestStatusFromText(
+    text: string,
+    locale: Locale = "en"
+  ): Promise<GitHubSkillResult> {
     const targetJobId = pickJobId(text, this.latestTestJobId);
     if (!targetJobId) {
       return { text: t(locale, "githubNoTestJobs") };
@@ -269,7 +345,10 @@ export class GitHubSkill {
     };
   }
 
-  async getTestStatus(jobId = this.latestTestJobId, locale = "en") {
+  async getTestStatus(
+    jobId = this.latestTestJobId,
+    locale: Locale = "en"
+  ): Promise<GitHubSkillResult | null> {
     if (!jobId) return null;
     return this.readTestStatusFromText(`test status ${jobId}`, locale);
   }
