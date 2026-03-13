@@ -1,9 +1,12 @@
-export function extractCommandPayload(rawText = "", commandName) {
+export function extractCommandPayload(
+  rawText = "",
+  commandName: string
+): string {
   const pattern = new RegExp(`^\\/${commandName}(?:@\\w+)?\\s*`, "i");
   return String(rawText).replace(pattern, "").trim();
 }
 
-function levenshteinDistance(a, b) {
+function levenshteinDistance(a: string, b: string): number {
   const left = String(a);
   const right = String(b);
   const dp = Array.from({ length: left.length + 1 }, () =>
@@ -27,7 +30,11 @@ function levenshteinDistance(a, b) {
   return dp[left.length][right.length];
 }
 
-export function suggestClosestWord(input, candidates, maxDistance = 2) {
+export function suggestClosestWord(
+  input: string,
+  candidates: Iterable<string | null | undefined>,
+  maxDistance = 2
+): string {
   const normalizedInput = String(input || "")
     .trim()
     .toLowerCase();
@@ -52,7 +59,7 @@ export function suggestClosestWord(input, candidates, maxDistance = 2) {
   return bestDistance <= maxDistance ? best : "";
 }
 
-export function buildPlanPrompt(task) {
+export function buildPlanPrompt(task: string): string {
   return [
     "Planning mode only.",
     "Analyze the request and respond with a concise execution plan.",

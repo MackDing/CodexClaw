@@ -3,15 +3,25 @@ const TELEGRAM_SPECIAL_REGEX = /[_*[\]()~`>#+\-=|{}.!\\]/g;
 const CODEX_DIVIDER = "\n--------\n";
 const CODEX_TRANSCRIPT_HEADER_REGEX = /^OpenAI Codex v[^\n]*\n/;
 
-export function escapeMarkdownV2(input = "") {
+export interface ReasoningExtraction {
+  cleanText: string;
+  reasoningBlocks: string[];
+}
+
+export interface FormatPtyOutputOptions {
+  mode?: "spoiler" | "quote";
+  sessionMode?: "pty" | "exec" | "sdk";
+}
+
+export function escapeMarkdownV2(input = ""): string {
   return String(input).replace(TELEGRAM_SPECIAL_REGEX, "\\$&");
 }
 
-export function extractReasoning(raw = "") {
+export function extractReasoning(raw = ""): ReasoningExtraction {
   const source = String(raw);
-  const blocks = [];
+  const blocks: string[] = [];
 
-  const cleanText = source.replace(THINK_BLOCK_REGEX, (_, content) => {
+  const cleanText = source.replace(THINK_BLOCK_REGEX, (_match, content) => {
     const trimmed = String(content || "").trim();
     if (trimmed) blocks.push(trimmed);
     return "";
@@ -23,7 +33,7 @@ export function extractReasoning(raw = "") {
   };
 }
 
-function removeCodexBanner(raw = "") {
+function removeCodexBanner(raw = ""): string {
   const source = String(raw || "").replace(/\r/g, "");
   if (!CODEX_TRANSCRIPT_HEADER_REGEX.test(source)) return source;
 
@@ -39,13 +49,13 @@ function removeCodexBanner(raw = "") {
   return source.slice(secondDividerIndex + CODEX_DIVIDER.length);
 }
 
-export function extractCodexExecResponse(raw = "") {
+export function extractCodexExecResponse(raw = ""): string {
   const source = removeCodexBanner(raw);
   if (!source) return "";
 
-  const blocks = [];
-  let section = null;
-  let currentCodexLines = [];
+  const blocks: string[] = [];
+  let section: "user" | "codex" | "exec" | null = null;
+  let currentCodexLines: string[] = [];
   let skipNextNonEmptyLine = false;
 
   const flushCodexBlock = () => {
@@ -118,7 +128,10 @@ export function extractCodexExecResponse(raw = "") {
   return blocks.at(-1) || "";
 }
 
-function renderReasoningBlock(content, mode = "spoiler") {
+function renderReasoningBlock(
+  content: string,
+  mode: NonNullable<FormatPtyOutputOptions["mode"]> = "spoiler"
+): string {
   const escaped = escapeMarkdownV2(content);
   if (mode === "quote") {
     const lines = escaped.split("\n").map((line) => `> ${line || " "}`);
@@ -138,7 +151,10 @@ function renderReasoningBlock(content, mode = "spoiler") {
   return segments.map((segment) => `||${segment}||`).join("\n");
 }
 
-export function formatPtyOutput(raw, options = {}) {
+export function formatPtyOutput(
+  raw: string,
+  options: FormatPtyOutputOptions = {}
+): string {
   const { mode = "spoiler", sessionMode = "pty" } = options;
   const normalizedRaw =
     sessionMode === "exec" ? extractCodexExecResponse(raw) : String(raw || "");
@@ -164,12 +180,15 @@ export function formatPtyOutput(raw, options = {}) {
   return sections.join("\n\n");
 }
 
-export function splitTelegramMessage(markdownText, maxLength = 3900) {
+export function splitTelegramMessage(
+  markdownText: string,
+  maxLength = 3900
+): string[] {
   const text = String(markdownText ?? "");
   if (!text) return [escapeMarkdownV2("(empty output)")];
   if (text.length <= maxLength) return [text];
 
-  const chunks = [];
+  const chunks: string[] = [];
   let current = "";
 
   for (const line of text.split("\n")) {

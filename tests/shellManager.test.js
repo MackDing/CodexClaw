@@ -2,7 +2,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseCommandLine } from "../src/runner/commandLine.js";
+import {
+  hasForbiddenShellSyntax,
+  matchesAllowedCommandPrefix,
+  parseCommandLine
+} from "../src/runner/commandLine.js";
 import { ShellManager } from "../src/runner/shellManager.js";
 
 function createShellManager(overrides = {}) {
@@ -34,6 +38,22 @@ test("parseCommandLine keeps quoted arguments together", () => {
     "-m",
     "feat: init repo"
   ]);
+});
+
+test("hasForbiddenShellSyntax rejects shell control operators and newlines", () => {
+  assert.equal(hasForbiddenShellSyntax("git status && pwd"), true);
+  assert.equal(hasForbiddenShellSyntax("echo $(pwd)"), true);
+  assert.equal(hasForbiddenShellSyntax("git status\npwd"), true);
+  assert.equal(hasForbiddenShellSyntax("git status"), false);
+});
+
+test("matchesAllowedCommandPrefix only accepts exact token prefixes", () => {
+  assert.equal(matchesAllowedCommandPrefix(["git", "status"], [["git"]]), true);
+  assert.equal(
+    matchesAllowedCommandPrefix(["git", "status"], [["git", "push"]]),
+    false
+  );
+  assert.equal(matchesAllowedCommandPrefix([], [["git"]]), false);
 });
 
 test("shell manager rejects shell metacharacters and commands outside the allowlist", () => {

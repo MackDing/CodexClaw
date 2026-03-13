@@ -4,7 +4,8 @@ import type { AppConfig } from "../config.js";
 import {
   hasForbiddenShellSyntax,
   matchesAllowedCommandPrefix,
-  parseCommandLine
+  parseCommandLine,
+  type CommandPrefixList
 } from "./commandLine.js";
 import { t } from "../bot/i18n.js";
 
@@ -42,8 +43,8 @@ function trimOutputTail(value: string, maxChars: number): string {
 export class ShellManager {
   readonly config: Pick<AppConfig, "shell">;
   readonly runningJobs: Map<string, ChildProcess>;
-  readonly allowedPrefixes: string[][];
-  readonly dangerousPrefixes: string[][];
+  readonly allowedPrefixes: CommandPrefixList;
+  readonly dangerousPrefixes: CommandPrefixList;
 
   constructor({ config }: ShellManagerOptions) {
     this.config = config;
