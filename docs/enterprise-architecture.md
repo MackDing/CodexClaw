@@ -110,9 +110,9 @@ For enterprise rollout, migrate the following first:
 - `src/config.ts`
 - `src/orchestrator/router.ts`
 - `src/orchestrator/skillRegistry.ts`
-- `src/orchestrator/mcpClient.js`
-- `src/runner/ptyManager.js`
-- `src/runner/shellManager.js`
+- `src/orchestrator/mcpClient.ts`
+- `src/runner/ptyManager.ts`
+- `src/runner/shellManager.ts`
 
 TypeScript matters here because config shape, skill contracts, worker RPC payloads, and audit event schemas must remain stable across teams and releases.
 

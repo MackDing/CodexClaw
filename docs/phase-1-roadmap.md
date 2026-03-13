@@ -20,9 +20,9 @@ Scope:
 - Migrate `src/config.ts`
 - Migrate `src/orchestrator/router.ts`
 - Migrate `src/orchestrator/skillRegistry.ts`
-- Migrate `src/orchestrator/mcpClient.js`
-- Migrate `src/runner/ptyManager.js`
-- Migrate `src/runner/shellManager.js`
+- Migrate `src/orchestrator/mcpClient.ts`
+- Migrate `src/runner/ptyManager.ts`
+- Migrate `src/runner/shellManager.ts`
 
 Deliverables:
 

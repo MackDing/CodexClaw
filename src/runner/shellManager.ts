@@ -1,5 +1,6 @@
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import process from "node:process";
+import type { AppConfig } from "../config.js";
 import {
   hasForbiddenShellSyntax,
   matchesAllowedCommandPrefix,
@@ -7,13 +8,44 @@ import {
 } from "./commandLine.js";
 import { t } from "../bot/i18n.js";
 
-function trimOutputTail(value, maxChars) {
+type Locale = "en" | "zh" | "zh-HK";
+
+export interface ShellInspection {
+  argv: string[];
+  commandText: string;
+  confirmed: boolean;
+  dangerous: boolean;
+  requiresConfirmation: boolean;
+  confirmationCommand: string;
+}
+
+export interface ShellExecutionResult {
+  started: boolean;
+  reason?: "busy";
+  status?: "passed" | "failed" | "timed_out";
+  command?: string;
+  workdir?: string;
+  exitCode?: number | null;
+  signal?: NodeJS.Signals | null;
+  output?: string;
+}
+
+interface ShellManagerOptions {
+  config: Pick<AppConfig, "shell">;
+}
+
+function trimOutputTail(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   return value.slice(-maxChars);
 }
 
 export class ShellManager {
-  constructor({ config }) {
+  readonly config: Pick<AppConfig, "shell">;
+  readonly runningJobs: Map<string, ChildProcess>;
+  readonly allowedPrefixes: string[][];
+  readonly dangerousPrefixes: string[][];
+
+  constructor({ config }: ShellManagerOptions) {
     this.config = config;
     this.runningJobs = new Map();
     this.allowedPrefixes = config.shell.allowedCommands.map((command) =>
@@ -24,27 +56,30 @@ export class ShellManager {
     );
   }
 
-  isEnabled() {
+  isEnabled(): boolean {
     return this.config.shell.enabled;
   }
 
-  isReadOnly() {
+  isReadOnly(): boolean {
     return this.config.shell.readOnly;
   }
 
-  isBusy(chatId) {
+  isBusy(chatId: string | number): boolean {
     return this.runningJobs.has(String(chatId));
   }
 
-  getAllowedCommands() {
+  getAllowedCommands(): string[] {
     return [...this.config.shell.allowedCommands];
   }
 
-  getDangerousCommands() {
+  getDangerousCommands(): string[] {
     return [...(this.config.shell.dangerousCommands || [])];
   }
 
-  inspectCommand(rawCommand, { locale = "en" } = {}) {
+  inspectCommand(
+    rawCommand: string,
+    { locale = "en" as Locale } = {}
+  ): ShellInspection {
     if (!this.isEnabled()) {
       throw new Error(t(locale, "shellDisabled"));
     }
@@ -93,7 +128,10 @@ export class ShellManager {
     };
   }
 
-  validateCommand(rawCommand, { locale = "en" } = {}) {
+  validateCommand(
+    rawCommand: string,
+    { locale = "en" as Locale } = {}
+  ): string[] {
     const inspected = this.inspectCommand(rawCommand, { locale });
     if (inspected.requiresConfirmation) {
       throw new Error(
@@ -106,7 +144,17 @@ export class ShellManager {
     return inspected.argv;
   }
 
-  async execute({ chatId, rawCommand, workdir, locale = "en" }) {
+  async execute({
+    chatId,
+    rawCommand,
+    workdir,
+    locale = "en" as Locale
+  }: {
+    chatId: string | number;
+    rawCommand: string;
+    workdir: string;
+    locale?: Locale;
+  }): Promise<ShellExecutionResult> {
     const key = String(chatId);
     if (this.isBusy(key)) {
       return {
@@ -130,7 +178,7 @@ export class ShellManager {
 
       this.runningJobs.set(key, child);
 
-      const appendOutput = (chunk) => {
+      const appendOutput = (chunk: unknown) => {
         output = trimOutputTail(`${output}${String(chunk || "")}`, outputLimit);
       };
 
@@ -140,8 +188,8 @@ export class ShellManager {
         setTimeout(() => child.kill("SIGKILL"), 2000).unref();
       }, this.config.shell.timeoutMs);
 
-      child.stdout.on("data", appendOutput);
-      child.stderr.on("data", appendOutput);
+      child.stdout?.on("data", appendOutput);
+      child.stderr?.on("data", appendOutput);
 
       child.on("error", (error) => {
         clearTimeout(timeout);

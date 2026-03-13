@@ -104,7 +104,7 @@ npm run healthcheck
 Telegram Message
   -> src/bot/handlers.js
   -> src/orchestrator/router.ts
-     -> src/runner/ptyManager.js        (coding tasks -> Codex CLI)
+     -> src/runner/ptyManager.ts        (coding tasks -> Codex CLI)
      -> src/orchestrator/skills/*.js    (general tasks -> MCP/GitHub subagents)
   -> src/bot/formatter.js
   -> Telegram sendMessage/editMessageText
@@ -116,7 +116,7 @@ Core modules:
 - `src/config.ts`: env parsing and validation
 - `src/bot/`: auth middleware, formatting, command handlers
 - `src/orchestrator/`: routing + MCP client + skills
-- `src/runner/ptyManager.js`: Codex PTY process + streaming
+- `src/runner/ptyManager.ts`: Codex PTY process + streaming
 - `src/cron/scheduler.js`: proactive scheduled push
 
 Enterprise target architecture: [docs/enterprise-architecture.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/enterprise-architecture.md)

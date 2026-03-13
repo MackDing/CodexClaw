@@ -1,31 +1,219 @@
 import fs from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
 import pty from "node-pty";
 import throttle from "lodash.throttle";
 import stripAnsi from "strip-ansi";
+import type { AppConfig } from "../config.js";
 import { formatPtyOutput, splitTelegramMessage } from "../bot/formatter.js";
 import { normalizeLanguage, t } from "../bot/i18n.js";
 import { repairNodePtySpawnHelperPermissions } from "./ptyPreflight.js";
 
-function isMessageNotModified(error) {
-  return String(error?.description || error?.message || "").includes(
+type Locale = "en" | "zh" | "zh-HK";
+type SessionMode = "pty" | "exec";
+type ExitSignal = number | NodeJS.Signals | null;
+
+interface PtyProcess {
+  write(input: string): void;
+  kill(): void;
+  onData(listener: (chunk: string) => void): void;
+  onExit(listener: (event: { exitCode: number; signal: number }) => void): void;
+}
+
+interface TelegramMessage {
+  message_id: number;
+}
+
+interface TelegramApiLike {
+  sendMessage(
+    chatId: string | number,
+    text: string,
+    options?: Record<string, unknown>
+  ): Promise<TelegramMessage>;
+  editMessageText(
+    chatId: string | number,
+    messageId: number,
+    inlineMessageId: string | undefined,
+    text: string,
+    options?: Record<string, unknown>
+  ): Promise<unknown>;
+  deleteMessage(chatId: string | number, messageId: number): Promise<unknown>;
+}
+
+interface BotLike {
+  telegram: TelegramApiLike;
+}
+
+interface ProjectConversationState {
+  lastSessionId: string;
+  lastMode: SessionMode | null;
+  lastExitCode: number | null;
+  lastExitSignal: ExitSignal;
+}
+
+interface ChatRuntimeState {
+  preferredModel: string | null;
+  language: Locale;
+  verboseOutput: boolean;
+  currentWorkdir: string;
+  recentWorkdirs: string[];
+  ptySupported: boolean | null;
+  projectStates: Map<string, ProjectConversationState>;
+}
+
+interface RunnerSession {
+  chatId: string;
+  mode: SessionMode;
+  workdir: string;
+  model: string | null;
+  sessionId: string;
+  trackConversation: boolean;
+  proc: PtyProcess | ChildProcessWithoutNullStreams | null;
+  rawBuffer: string;
+  streamMessageIds: number[];
+  lastRendered: string;
+  flushQueue: Promise<void>;
+  throttledFlush: ReturnType<typeof throttle>;
+  write: ((input: string) => void) | null;
+  interrupt: (() => void) | null;
+  close: (() => void) | null;
+}
+
+interface SessionOptions {
+  workdir?: string;
+  resumeSessionId?: string;
+  initialPrompt?: string;
+  fullAuto?: boolean;
+  extraArgs?: string[];
+  trackConversation?: boolean;
+}
+
+interface SendPromptOptions {
+  forceExec?: boolean;
+  fullAuto?: boolean;
+  extraArgs?: string[];
+  notice?: string;
+}
+
+interface SendPromptContext {
+  chat: {
+    id: string | number;
+  };
+}
+
+interface StoredProjectConversationState {
+  lastSessionId?: unknown;
+  lastMode?: unknown;
+  lastExitCode?: unknown;
+  lastExitSignal?: unknown;
+}
+
+interface StoredChatRuntimeState {
+  preferredModel?: unknown;
+  language?: unknown;
+  verboseOutput?: unknown;
+  currentWorkdir?: unknown;
+  recentWorkdirs?: unknown;
+  projects?: Record<string, StoredProjectConversationState>;
+}
+
+export interface PtyManagerSnapshot {
+  chats: Record<
+    string,
+    {
+      preferredModel: string | null;
+      language: Locale;
+      verboseOutput: boolean;
+      currentWorkdir: string;
+      recentWorkdirs: string[];
+      projects: Record<
+        string,
+        {
+          lastSessionId: string;
+          lastMode: SessionMode | null;
+          lastExitCode: number | null;
+          lastExitSignal: ExitSignal;
+        }
+      >;
+    }
+  >;
+}
+
+export interface PtyManagerStatus {
+  active: boolean;
+  activeMode: SessionMode | null;
+  lastMode: SessionMode | null;
+  lastExitCode: number | null;
+  lastExitSignal: ExitSignal;
+  projectSessionId: string | null;
+  preferredModel: string | null;
+  language: Locale;
+  verboseOutput: boolean;
+  ptySupported: boolean | null;
+  workdir: string;
+  relativeWorkdir: string;
+  workspaceRoot: string;
+  command: string;
+  mcpServers: string[];
+}
+
+interface PtyManagerOptions {
+  bot: BotLike;
+  config: Pick<AppConfig, "runner" | "workspace" | "reasoning" | "mcp">;
+  onChange?: (snapshot: PtyManagerSnapshot) => void;
+}
+
+function isMessageNotModified(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { description?: unknown; message?: unknown };
+  return String(candidate.description || candidate.message || "").includes(
     "message is not modified"
   );
 }
 
-function isPtySpawnFailure(error) {
-  return String(error?.message || "").includes("posix_spawnp failed");
+function isPtySpawnFailure(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const candidate = error as { message?: unknown };
+  return String(candidate.message || "").includes("posix_spawnp failed");
 }
 
-function extractSessionId(rawText) {
+function extractSessionId(rawText: string): string {
   const matched = String(rawText || "").match(/session id:\s*([0-9a-f-]{36})/i);
   return matched?.[1] || "";
 }
 
+function isLocale(value: string): value is Locale {
+  return value === "en" || value === "zh" || value === "zh-HK";
+}
+
+function toLocale(value: string): Locale {
+  return isLocale(value) ? value : "en";
+}
+
 export class PtyManager {
-  constructor({ bot, config, onChange }) {
+  readonly bot: BotLike;
+  readonly config: Pick<
+    AppConfig,
+    "runner" | "workspace" | "reasoning" | "mcp"
+  >;
+  readonly sessions: Map<string, RunnerSession>;
+  readonly chatState: Map<string, ChatRuntimeState>;
+  readonly ptyPreflight: {
+    path: string;
+    changed: boolean;
+    executable: boolean;
+    error?: string;
+  };
+  private readonly onChange?: (snapshot: PtyManagerSnapshot) => void;
+
+  constructor({ bot, config, onChange }: PtyManagerOptions) {
     this.bot = bot;
     this.config = config;
     this.onChange = onChange;
@@ -44,12 +232,12 @@ export class PtyManager {
     }
   }
 
-  ensureChatState(chatId) {
+  ensureChatState(chatId: string | number): ChatRuntimeState {
     const key = String(chatId);
     const existing = this.chatState.get(key);
     if (existing) return existing;
 
-    const state = {
+    const state: ChatRuntimeState = {
       preferredModel: null,
       language: "en",
       verboseOutput: false,
@@ -73,7 +261,10 @@ export class PtyManager {
     return state;
   }
 
-  ensureProjectState(chatId, workdir = this.getWorkdir(chatId)) {
+  ensureProjectState(
+    chatId: string | number,
+    workdir = this.getWorkdir(chatId)
+  ): ProjectConversationState {
     const key = String(chatId);
     const state = this.ensureChatState(key);
     const resolvedWorkdir = path.resolve(
@@ -82,7 +273,7 @@ export class PtyManager {
     const existing = state.projectStates.get(resolvedWorkdir);
     if (existing) return existing;
 
-    const projectState = {
+    const projectState: ProjectConversationState = {
       lastSessionId: "",
       lastMode: null,
       lastExitCode: null,
@@ -93,7 +284,7 @@ export class PtyManager {
     return projectState;
   }
 
-  getCommandArgsForSession(chatId) {
+  getCommandArgsForSession(chatId: string | number): string[] {
     const state = this.ensureChatState(chatId);
     const args = [...this.config.runner.args];
     if (state.preferredModel) {
@@ -102,51 +293,54 @@ export class PtyManager {
     return args;
   }
 
-  isVerbose(chatId) {
+  isVerbose(chatId: string | number): boolean {
     const state = this.ensureChatState(chatId);
     return Boolean(state.verboseOutput);
   }
 
-  getLanguage(chatId) {
+  getLanguage(chatId: string | number): Locale {
     const state = this.ensureChatState(chatId);
-    return normalizeLanguage(state.language) || "en";
+    return toLocale(normalizeLanguage(state.language) || "en");
   }
 
-  setLanguage(chatId, language) {
+  setLanguage(chatId: string | number, language: string): Locale {
     const normalized = normalizeLanguage(language);
     if (!normalized) {
       throw new Error("Unsupported language.");
     }
 
     const state = this.ensureChatState(chatId);
-    state.language = normalized;
+    state.language = toLocale(normalized);
     this.onChange?.(this.exportState());
-    return normalized;
+    return state.language;
   }
 
-  setVerbose(chatId, enabled) {
+  setVerbose(chatId: string | number, enabled: boolean): boolean {
     const state = this.ensureChatState(chatId);
     state.verboseOutput = Boolean(enabled);
     this.onChange?.(this.exportState());
     return state.verboseOutput;
   }
 
-  getWorkdir(chatId) {
+  getWorkdir(chatId: string | number): string {
     const state = this.ensureChatState(chatId);
     return state.currentWorkdir || this.config.runner.cwd;
   }
 
-  getRelativeWorkdir(chatId) {
+  getRelativeWorkdir(chatId: string | number): string {
     const workdir = this.getWorkdir(chatId);
     const relative = path.relative(this.config.workspace.root, workdir);
     return relative || ".";
   }
 
-  getProjectState(chatId, workdir = this.getWorkdir(chatId)) {
+  getProjectState(
+    chatId: string | number,
+    workdir = this.getWorkdir(chatId)
+  ): ProjectConversationState {
     return this.ensureProjectState(chatId, workdir);
   }
 
-  rememberWorkdir(state, workdir) {
+  rememberWorkdir(state: ChatRuntimeState, workdir: string): void {
     const history = [
       workdir,
       ...(state.recentWorkdirs || []).filter((item) => item !== workdir)
@@ -154,7 +348,7 @@ export class PtyManager {
     state.recentWorkdirs = history.slice(0, 6);
   }
 
-  isInsideWorkspaceRoot(candidate) {
+  isInsideWorkspaceRoot(candidate: string): boolean {
     const root = path.resolve(this.config.workspace.root);
     const target = path.resolve(candidate);
     const relative = path.relative(root, target);
@@ -164,10 +358,14 @@ export class PtyManager {
     );
   }
 
-  listProjects() {
+  listProjects(): Array<{ name: string; path: string; relativePath: string }> {
     const root = this.config.workspace.root;
     const entries = fs.readdirSync(root, { withFileTypes: true });
-    const projects = [];
+    const projects: Array<{
+      name: string;
+      path: string;
+      relativePath: string;
+    }> = [];
 
     if (fs.existsSync(path.join(root, ".git"))) {
       projects.push({
@@ -194,7 +392,9 @@ export class PtyManager {
     return projects.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  getRecentProjects(chatId) {
+  getRecentProjects(
+    chatId: string | number
+  ): Array<{ path: string; relativePath: string }> {
     const state = this.ensureChatState(chatId);
     return (state.recentWorkdirs || [])
       .filter(
@@ -207,7 +407,10 @@ export class PtyManager {
       }));
   }
 
-  switchWorkdir(chatId, targetName) {
+  switchWorkdir(
+    chatId: string | number,
+    targetName: string
+  ): { workdir: string; relativePath: string } {
     const key = String(chatId);
     const requested = String(targetName || "").trim();
     if (!requested) {
@@ -215,7 +418,7 @@ export class PtyManager {
     }
 
     const root = this.config.workspace.root;
-    let targetPath;
+    let targetPath: string;
 
     if (requested === "." || requested === path.basename(root)) {
       targetPath = root;
@@ -252,7 +455,10 @@ export class PtyManager {
     };
   }
 
-  switchToPreviousWorkdir(chatId) {
+  switchToPreviousWorkdir(chatId: string | number): {
+    workdir: string;
+    relativePath: string;
+  } {
     const key = String(chatId);
     const state = this.ensureChatState(key);
     const previous = (state.recentWorkdirs || []).find(
@@ -266,7 +472,11 @@ export class PtyManager {
     return this.switchWorkdir(key, previous);
   }
 
-  getExecArgs(chatId, prompt, options = {}) {
+  getExecArgs(
+    chatId: string | number,
+    prompt: string,
+    options: SessionOptions = {}
+  ): string[] {
     const state = this.ensureChatState(chatId);
     const args = options.resumeSessionId ? ["exec", "resume"] : ["exec"];
 
@@ -290,7 +500,10 @@ export class PtyManager {
     return args;
   }
 
-  getInteractiveArgs(chatId, options = {}) {
+  getInteractiveArgs(
+    chatId: string | number,
+    options: SessionOptions = {}
+  ): string[] {
     const args = options.resumeSessionId
       ? ["resume", options.resumeSessionId]
       : this.getCommandArgsForSession(chatId);
@@ -302,14 +515,18 @@ export class PtyManager {
     return args;
   }
 
-  createBaseSession(chatId, mode, options = {}) {
+  createBaseSession(
+    chatId: string | number,
+    mode: SessionMode,
+    options: SessionOptions = {}
+  ): RunnerSession {
     const key = String(chatId);
     const state = this.ensureChatState(key);
     const workdir = path.resolve(
       options.workdir || state.currentWorkdir || this.config.runner.cwd
     );
     const projectState = this.ensureProjectState(key, workdir);
-    const session = {
+    const session: RunnerSession = {
       chatId: key,
       mode,
       workdir,
@@ -321,23 +538,21 @@ export class PtyManager {
       streamMessageIds: [],
       lastRendered: "",
       flushQueue: Promise.resolve(),
-      throttledFlush: null,
+      throttledFlush: throttle(
+        () => this.enqueueFlush(key),
+        this.config.runner.throttleMs,
+        { leading: true, trailing: true }
+      ),
       write: null,
       interrupt: null,
       close: null
     };
 
-    session.throttledFlush = throttle(
-      () => this.enqueueFlush(key),
-      this.config.runner.throttleMs,
-      { leading: true, trailing: true }
-    );
-
     this.sessions.set(key, session);
     return session;
   }
 
-  captureSessionMetadata(session) {
+  captureSessionMetadata(session: RunnerSession): void {
     if (!session.trackConversation) return;
 
     const sessionId = extractSessionId(session.rawBuffer);
@@ -352,8 +567,13 @@ export class PtyManager {
     this.onChange?.(this.exportState());
   }
 
-  attachOutput(session, stream) {
-    stream.on("data", (chunk) => {
+  attachOutput(
+    session: RunnerSession,
+    stream:
+      | NodeJS.ReadableStream
+      | { on: (event: "data", listener: (chunk: unknown) => void) => void }
+  ): void {
+    stream.on("data", (chunk: unknown) => {
       session.rawBuffer += stripAnsi(String(chunk || "")).replace(/\r/g, "");
       if (session.rawBuffer.length > this.config.runner.maxBufferChars) {
         session.rawBuffer = session.rawBuffer.slice(
@@ -365,7 +585,15 @@ export class PtyManager {
     });
   }
 
-  attachExit(session, handler) {
+  attachExit(
+    session: RunnerSession,
+    handler: (
+      listener: (payload: {
+        exitCode: number | null;
+        signal: ExitSignal;
+      }) => void
+    ) => void
+  ): void {
     handler(async ({ exitCode, signal }) => {
       this.captureSessionMetadata(session);
       const projectState = this.ensureProjectState(
@@ -390,12 +618,15 @@ export class PtyManager {
           )
           .catch(() => {});
       }
-      session.throttledFlush?.cancel();
+      session.throttledFlush.cancel();
       this.sessions.delete(session.chatId);
     });
   }
 
-  startPtySession(chatId, options = {}) {
+  startPtySession(
+    chatId: string | number,
+    options: SessionOptions = {}
+  ): RunnerSession {
     const session = this.createBaseSession(chatId, "pty", options);
     const proc = pty.spawn(
       this.config.runner.command,
@@ -410,11 +641,11 @@ export class PtyManager {
           FORCE_COLOR: "1"
         }
       }
-    );
+    ) as PtyProcess;
 
     this.ensureChatState(chatId).ptySupported = true;
     session.proc = proc;
-    session.write = (input) => proc.write(input);
+    session.write = (input: string) => proc.write(input);
     session.interrupt = () => proc.write("\u0003");
     session.close = () => proc.kill();
 
@@ -433,7 +664,11 @@ export class PtyManager {
     return session;
   }
 
-  startExecSessionWithOptions(chatId, prompt, options = {}) {
+  startExecSessionWithOptions(
+    chatId: string | number,
+    prompt: string,
+    options: SessionOptions = {}
+  ): RunnerSession {
     const session = this.createBaseSession(chatId, "exec", options);
     const proc = spawn(
       this.config.runner.command,
@@ -449,8 +684,12 @@ export class PtyManager {
     session.interrupt = () => proc.kill("SIGINT");
     session.close = () => proc.kill("SIGTERM");
 
-    this.attachOutput(session, proc.stdout);
-    this.attachOutput(session, proc.stderr);
+    if (proc.stdout) {
+      this.attachOutput(session, proc.stdout);
+    }
+    if (proc.stderr) {
+      this.attachOutput(session, proc.stderr);
+    }
     this.attachExit(session, (listener) =>
       proc.on("close", (exitCode, signal) => listener({ exitCode, signal }))
     );
@@ -464,14 +703,17 @@ export class PtyManager {
           })
         )
         .catch(() => {});
-      session.throttledFlush?.cancel();
+      session.throttledFlush.cancel();
       this.sessions.delete(session.chatId);
     });
 
     return session;
   }
 
-  ensureSession(chatId, options = {}) {
+  ensureSession(
+    chatId: string | number,
+    options: SessionOptions = {}
+  ): RunnerSession | null {
     const key = String(chatId);
     const existing = this.sessions.get(key);
     if (existing) return existing;
@@ -491,7 +733,7 @@ export class PtyManager {
     }
   }
 
-  enqueueFlush(chatId) {
+  enqueueFlush(chatId: string | number): void {
     const key = String(chatId);
     const session = this.sessions.get(key);
     if (!session) return;
@@ -501,8 +743,8 @@ export class PtyManager {
       .catch(() => {});
   }
 
-  async flushToTelegram(chatId) {
-    const session = this.sessions.get(chatId);
+  async flushToTelegram(chatId: string | number): Promise<void> {
+    const session = this.sessions.get(String(chatId));
     if (!session) return;
 
     const rawTail = session.rawBuffer.slice(-60000);
@@ -518,7 +760,7 @@ export class PtyManager {
       this.config.runner.telegramChunkSize
     );
     const existing = session.streamMessageIds;
-    const nextIds = [];
+    const nextIds: number[] = [];
 
     for (let i = 0; i < chunks.length; i += 1) {
       const chunk = chunks[i];
@@ -565,7 +807,19 @@ export class PtyManager {
     session.streamMessageIds = nextIds;
   }
 
-  async sendPrompt(ctx, prompt, options = {}) {
+  async sendPrompt(
+    ctx: SendPromptContext,
+    prompt: string,
+    options: SendPromptOptions = {}
+  ): Promise<
+    | { started: false; reason: "busy"; activeMode: SessionMode }
+    | {
+        started: true;
+        mode: SessionMode;
+        fallback?: boolean;
+        resumed?: boolean;
+      }
+  > {
     const chatId = String(ctx.chat.id);
     const projectState = this.ensureProjectState(chatId);
     if (options.forceExec) {
@@ -605,7 +859,7 @@ export class PtyManager {
         };
       }
 
-      existingSession.write(`${prompt}\r`);
+      existingSession.write?.(`${prompt}\r`);
       return {
         started: true,
         mode: "pty"
@@ -671,21 +925,24 @@ export class PtyManager {
       };
     }
 
-    session.write(`${prompt}\r`);
+    session.write?.(`${prompt}\r`);
     return {
       started: true,
       mode: "pty"
     };
   }
 
-  interrupt(chatId) {
+  interrupt(chatId: string | number): boolean {
     const session = this.sessions.get(String(chatId));
     if (!session) return false;
     session.interrupt?.();
     return true;
   }
 
-  resetCurrentProjectConversation(chatId) {
+  resetCurrentProjectConversation(chatId: string | number): {
+    closed: boolean;
+    workdir: string;
+  } {
     const key = String(chatId);
     const workdir = this.getWorkdir(key);
     const projectState = this.ensureProjectState(key, workdir);
@@ -703,24 +960,24 @@ export class PtyManager {
     };
   }
 
-  closeSession(chatId) {
+  closeSession(chatId: string | number): boolean {
     const key = String(chatId);
     const session = this.sessions.get(key);
     if (!session) return false;
 
-    session.throttledFlush?.cancel();
+    session.throttledFlush.cancel();
     session.close?.();
     this.sessions.delete(key);
     return true;
   }
 
-  async shutdown() {
+  async shutdown(): Promise<void> {
     for (const chatId of this.sessions.keys()) {
       this.closeSession(chatId);
     }
   }
 
-  serializeWorkdir(workdir) {
+  serializeWorkdir(workdir: string): string {
     const relative = path.relative(this.config.workspace.root, workdir);
     if (!relative) return ".";
     return !relative.startsWith("..") && !path.isAbsolute(relative)
@@ -728,7 +985,7 @@ export class PtyManager {
       : workdir;
   }
 
-  resolveStoredWorkdir(stored) {
+  resolveStoredWorkdir(stored: unknown): string | null {
     if (!stored || typeof stored !== "string") return null;
     const candidate = path.isAbsolute(stored)
       ? path.resolve(stored)
@@ -745,11 +1002,11 @@ export class PtyManager {
     return candidate;
   }
 
-  exportState() {
-    const chats = {};
+  exportState(): PtyManagerSnapshot {
+    const chats: PtyManagerSnapshot["chats"] = {};
 
     for (const [chatId, state] of this.chatState.entries()) {
-      const projects = {};
+      const projects: PtyManagerSnapshot["chats"][string]["projects"] = {};
       for (const [workdir, projectState] of state.projectStates.entries()) {
         projects[this.serializeWorkdir(workdir)] = {
           lastSessionId: projectState.lastSessionId || "",
@@ -776,13 +1033,15 @@ export class PtyManager {
     };
   }
 
-  restoreState(snapshot = {}) {
+  restoreState(snapshot: Partial<PtyManagerSnapshot> = {}): void {
     const chats = snapshot?.chats;
     if (!chats || typeof chats !== "object") return;
 
     this.chatState.clear();
 
-    for (const [chatId, rawState] of Object.entries(chats)) {
+    for (const [chatId, rawState] of Object.entries(
+      chats as Record<string, StoredChatRuntimeState>
+    )) {
       const currentWorkdir =
         this.resolveStoredWorkdir(rawState?.currentWorkdir) ||
         this.config.runner.cwd;
@@ -790,10 +1049,10 @@ export class PtyManager {
       const recentWorkdirs = Array.isArray(rawState?.recentWorkdirs)
         ? rawState.recentWorkdirs
             .map((stored) => this.resolveStoredWorkdir(stored))
-            .filter(Boolean)
+            .filter((workdir): workdir is string => Boolean(workdir))
         : [];
 
-      const projectStates = new Map();
+      const projectStates = new Map<string, ProjectConversationState>();
       const rawProjects = rawState?.projects;
       if (rawProjects && typeof rawProjects === "object") {
         for (const [storedWorkdir, rawProjectState] of Object.entries(
@@ -804,13 +1063,21 @@ export class PtyManager {
 
           projectStates.set(resolvedWorkdir, {
             lastSessionId: String(rawProjectState?.lastSessionId || "").trim(),
-            lastMode: rawProjectState?.lastMode || null,
+            lastMode:
+              rawProjectState?.lastMode === "pty" ||
+              rawProjectState?.lastMode === "exec"
+                ? rawProjectState.lastMode
+                : null,
             lastExitCode:
               rawProjectState?.lastExitCode === null ||
               rawProjectState?.lastExitCode === undefined
                 ? null
-                : rawProjectState.lastExitCode,
-            lastExitSignal: rawProjectState?.lastExitSignal || null
+                : Number(rawProjectState.lastExitCode),
+            lastExitSignal:
+              rawProjectState?.lastExitSignal === null ||
+              rawProjectState?.lastExitSignal === undefined
+                ? null
+                : (rawProjectState.lastExitSignal as ExitSignal)
           });
         }
       }
@@ -825,8 +1092,14 @@ export class PtyManager {
       }
 
       this.chatState.set(String(chatId), {
-        preferredModel: rawState?.preferredModel?.trim?.() || null,
-        language: normalizeLanguage(rawState?.language) || "en",
+        preferredModel:
+          typeof rawState?.preferredModel === "string" &&
+          rawState.preferredModel.trim()
+            ? rawState.preferredModel.trim()
+            : null,
+        language: toLocale(
+          normalizeLanguage(String(rawState?.language || "")) || "en"
+        ),
         verboseOutput: Boolean(rawState?.verboseOutput),
         currentWorkdir,
         recentWorkdirs: [
@@ -839,7 +1112,7 @@ export class PtyManager {
     }
   }
 
-  getStatus(chatId) {
+  getStatus(chatId: string | number): PtyManagerStatus {
     const key = String(chatId);
     const state = this.ensureChatState(key);
     const projectState = this.ensureProjectState(key, state.currentWorkdir);
@@ -864,14 +1137,14 @@ export class PtyManager {
     };
   }
 
-  setPreferredModel(chatId, model) {
+  setPreferredModel(chatId: string | number, model: string): string | null {
     const state = this.ensureChatState(chatId);
     state.preferredModel = model?.trim() || null;
     this.onChange?.(this.exportState());
     return state.preferredModel;
   }
 
-  clearPreferredModel(chatId) {
+  clearPreferredModel(chatId: string | number): void {
     const state = this.ensureChatState(chatId);
     state.preferredModel = null;
     this.onChange?.(this.exportState());
