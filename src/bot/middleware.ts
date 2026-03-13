@@ -1,4 +1,9 @@
-export function createAuthMiddleware(config) {
+import type { Context, MiddlewareFn } from "telegraf";
+import type { AppConfig } from "../config.js";
+
+export function createAuthMiddleware(
+  config: Pick<AppConfig, "telegram">
+): MiddlewareFn<Context> {
   const allowedSet = new Set(config.telegram.allowedUserIds.map(String));
 
   return async (ctx, next) => {

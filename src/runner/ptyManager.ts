@@ -14,10 +14,8 @@ import throttle from "lodash.throttle";
 import stripAnsi from "strip-ansi";
 import type { AppConfig } from "../config.js";
 import { formatPtyOutput, splitTelegramMessage } from "../bot/formatter.js";
-import { normalizeLanguage, t } from "../bot/i18n.js";
+import { normalizeLanguage, t, type Locale } from "../bot/i18n.js";
 import { repairNodePtySpawnHelperPermissions } from "./ptyPreflight.js";
-
-type Locale = "en" | "zh" | "zh-HK";
 type SessionMode = "pty" | "exec" | "sdk";
 type ExitSignal = number | NodeJS.Signals | null;
 

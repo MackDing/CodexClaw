@@ -7,9 +7,7 @@ import {
   parseCommandLine,
   type CommandPrefixList
 } from "./commandLine.js";
-import { t } from "../bot/i18n.js";
-
-type Locale = "en" | "zh" | "zh-HK";
+import { t, type Locale } from "../bot/i18n.js";
 
 export interface ShellInspection {
   argv: string[];

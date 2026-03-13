@@ -4,14 +4,17 @@ import {
   extractCommandPayload,
   suggestClosestWord
 } from "./commandUtils.js";
-import { normalizeLanguage, SUPPORTED_LANGUAGES, t } from "./i18n.js";
+import {
+  normalizeLanguage,
+  SUPPORTED_LANGUAGES,
+  t,
+  type Locale
+} from "./i18n.js";
 import { escapeMarkdownV2, splitTelegramMessage } from "./formatter.js";
 import type { Router } from "../orchestrator/router.js";
 import type { PtyManager } from "../runner/ptyManager.js";
 import type { ShellManager } from "../runner/shellManager.js";
 import type { SkillRegistry } from "../orchestrator/skillRegistry.js";
-
-type Locale = "en" | "zh" | "zh-HK";
 
 interface SkillResultPayload {
   text?: string;

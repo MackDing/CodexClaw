@@ -1,7 +1,15 @@
-export const SUPPORTED_LANGUAGES = ["en", "zh", "zh-HK"];
-const DEFAULT_LANGUAGE = "en";
+export const SUPPORTED_LANGUAGES = ["en", "zh", "zh-HK"] as const;
+export type Locale = (typeof SUPPORTED_LANGUAGES)[number];
 
-const LANGUAGE_LABELS = {
+type TranslationParams = Record<string, any>;
+type TranslationEntry =
+  | string
+  | ((params: TranslationParams) => string | string[]);
+type TranslationCatalog = Record<string, TranslationEntry>;
+
+const DEFAULT_LANGUAGE: Locale = "en";
+
+const LANGUAGE_LABELS: Record<Locale, Record<Locale, string>> = {
   en: {
     en: "English",
     zh: "Simplified Chinese",
@@ -19,11 +27,11 @@ const LANGUAGE_LABELS = {
   }
 };
 
-function joinLines(lines = []) {
+function joinLines(lines: readonly string[] = []): string {
   return lines.join("\n");
 }
 
-const MESSAGES = {
+const MESSAGES: Record<Locale, TranslationCatalog> = {
   en: {
     buttonRefreshTestStatus: "Refresh test status",
     emptyResponse: "(empty response)",
@@ -288,14 +296,14 @@ const MESSAGES = {
       joinLines([
         "MCP servers:",
         ...servers.map(
-          (server) =>
+          (server: any) =>
             `- ${server.name}: ${server.enabled ? "enabled" : "disabled"}, ${server.connected ? "connected" : "disconnected"}`
         )
       ]),
     mcpUnknownServer: ({ name }) => `MCP server not found: ${name}`,
     mcpStatus: ({ servers }) =>
       servers
-        .map((server) =>
+        .map((server: any) =>
           [
             `server: ${server.name}`,
             `enabled: ${server.enabled ? "yes" : "no"}`,
@@ -663,14 +671,14 @@ const MESSAGES = {
       joinLines([
         "MCP servers:",
         ...servers.map(
-          (server) =>
+          (server: any) =>
             `- ${server.name}: ${server.enabled ? "enabled" : "disabled"}, ${server.connected ? "connected" : "disconnected"}`
         )
       ]),
     mcpUnknownServer: ({ name }) => `找不到 MCP server: ${name}`,
     mcpStatus: ({ servers }) =>
       servers
-        .map((server) =>
+        .map((server: any) =>
           [
             `server: ${server.name}`,
             `enabled: ${server.enabled ? "yes" : "no"}`,
@@ -781,7 +789,9 @@ const MESSAGES = {
   "zh-HK": {}
 };
 
-export function normalizeLanguage(value = "") {
+type ArrayMessageKey = "startLines" | "helpLines" | "statusLines" | "pwdLines";
+
+export function normalizeLanguage(value = ""): Locale | "" {
   const raw = String(value || "").trim();
   if (!raw) return DEFAULT_LANGUAGE;
   const lower = raw.toLowerCase();
@@ -791,7 +801,10 @@ export function normalizeLanguage(value = "") {
   return "";
 }
 
-export function languageLabel(language, locale = DEFAULT_LANGUAGE) {
+export function languageLabel(
+  language: string,
+  locale: string = DEFAULT_LANGUAGE
+): string {
   const resolvedLocale = normalizeLanguage(locale) || DEFAULT_LANGUAGE;
   const resolvedLanguage = normalizeLanguage(language) || DEFAULT_LANGUAGE;
   return (
@@ -801,13 +814,27 @@ export function languageLabel(language, locale = DEFAULT_LANGUAGE) {
   );
 }
 
-export function t(locale, key, params = {}) {
+export function t(
+  locale: string,
+  key: ArrayMessageKey,
+  params?: TranslationParams
+): string[];
+export function t(
+  locale: string,
+  key: string,
+  params?: TranslationParams
+): string;
+export function t(
+  locale: string,
+  key: string,
+  params: TranslationParams = {}
+): string | string[] {
   const resolvedLocale = normalizeLanguage(locale) || DEFAULT_LANGUAGE;
   const catalogs = [
     MESSAGES[resolvedLocale],
     resolvedLocale === "zh-HK" ? MESSAGES.zh : null,
     MESSAGES.en
-  ].filter(Boolean);
+  ].filter((catalog): catalog is TranslationCatalog => Boolean(catalog));
 
   for (const catalog of catalogs) {
     if (!(key in catalog)) continue;
