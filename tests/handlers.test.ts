@@ -114,7 +114,7 @@ function createDependencies(overrides: {
         target: "pty" as const,
         prompt: text
       })
-    },
+    } as any,
     ptyManager: ptyManager as any,
     shellManager: {
       isEnabled: () => false,

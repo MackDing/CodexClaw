@@ -5,6 +5,10 @@ on:
     tags:
       - "v*"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -29,7 +33,7 @@ jobs:
           cache: npm
 
       - run: npm ci
-      - run: npm run ci
+      - run: npm run release:check
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2

@@ -4,6 +4,8 @@
 
 The recommended production supervisor is PM2. This bot uses Telegram long polling, so run exactly one instance per bot token.
 
+`ecosystem.config.ts` is the source of truth. Start PM2 through `ecosystem.config.cjs`, which is a thin compatibility shim for PM2's config loader.
+
 Start:
 
 ```bash
@@ -39,7 +41,8 @@ npm run healthcheck:strict
 Optional Telegram live check:
 
 ```bash
-node scripts/healthcheck.js --strict --telegram-live
+npm run healthcheck:strict
+npm run healthcheck:live
 ```
 
 What the health check validates:
@@ -53,6 +56,7 @@ What the health check validates:
 ## Deployment Notes
 
 - Keep exactly one polling process per bot token.
+- If you also use Codex directly in a terminal, run that work in a separate git worktree. The bot only detects conflicts with other bot-managed chats, not external terminal sessions.
 - Run the bot under a restricted system user.
 - Keep `.env` outside version control.
 - Rotate Telegram and GitHub tokens if they are ever exposed.

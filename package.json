@@ -18,7 +18,8 @@
     "healthcheck:strict": "tsx scripts/healthcheck.ts --strict",
     "healthcheck:live": "tsx scripts/healthcheck.ts --codex-live --telegram-live",
     "telegram:smoke": "tsx scripts/telegramSmoke.ts",
-    "ci": "npm run check && npm run lint && npm run format:check && npm test && npm run healthcheck"
+    "ci": "npm run check && npm run lint && npm run format:check && npm test && npm run healthcheck",
+    "release:check": "npm run ci && npm run healthcheck:strict"
   },
   "keywords": [
     "telegram",

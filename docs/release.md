@@ -11,29 +11,30 @@ Run locally:
 
 ```bash
 npm install
-npm run ci
+npm run release:check
 ```
 
 Recommended production checks:
 
 ```bash
 npm run healthcheck:strict
-node scripts/healthcheck.js --strict --telegram-live
+npm run healthcheck:live
 ```
 
 Manual checks:
 
-- verify `/status`, `/repo`, `/language`, `/verbose`, `/mcp list`, and `/gh` on a real Telegram chat
+- verify `/status`, `/repo`, `/continue`, `/language`, `/verbose`, `/mcp list`, and `/gh` on a real Telegram chat
 - verify PTY mode is active on the target host
 - verify cron and proactive push configuration
 - verify only one bot instance is polling
+- verify no second bot-managed chat can start a same-workdir Codex run without the explicit `/continue` override
 
 ## Tag And Publish
 
 ```bash
 git checkout main
 git pull --ff-only
-npm run ci
+npm run release:check
 git tag v0.2.0
 git push origin main --tags
 ```

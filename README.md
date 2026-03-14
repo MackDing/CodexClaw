@@ -90,7 +90,7 @@ npm run healthcheck:live
 
 - `npm run start` - start the bot
 - `npm run dev` - watch mode for local development
-- `npm run check` - TypeScript-aware type and syntax validation for the mixed JS/TS codebase
+- `npm run check` - TypeScript type and syntax validation for the repository
 - `npm run typecheck` - run the TypeScript compiler in `--noEmit` mode
 - `npm run lint` - ESLint for source, tests, scripts, and local JS/CJS config files
 - `npm run lint:fix` - apply safe lint fixes
@@ -109,8 +109,8 @@ Telegram Message
   -> src/bot/handlers.ts
   -> src/orchestrator/router.ts
      -> src/runner/ptyManager.ts        (coding tasks -> Codex SDK or Codex CLI)
-     -> src/orchestrator/skills/*.js    (general tasks -> MCP/GitHub subagents)
-  -> src/bot/formatter.js
+     -> src/orchestrator/skills/*.ts    (general tasks -> MCP/GitHub subagents)
+  -> src/bot/formatter.ts
   -> Telegram sendMessage/editMessageText
 ```
 
@@ -121,7 +121,7 @@ Core modules:
 - `src/bot/`: auth middleware, formatting, command handlers
 - `src/orchestrator/`: routing + MCP client + skills
 - `src/runner/ptyManager.ts`: Codex runner abstraction for SDK threads, CLI/PTy sessions, and CLI exec fallback
-- `src/cron/scheduler.js`: proactive scheduled push
+- `src/cron/scheduler.ts`: proactive scheduled push
 
 Enterprise target architecture: [docs/enterprise-architecture.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/enterprise-architecture.md)
 Enterprise Phase 1 roadmap: [docs/phase-1-roadmap.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/phase-1-roadmap.md)
@@ -182,6 +182,7 @@ General:
 - `/exec <task>` - force a one-off Codex run without saving project context
 - `/auto <task>` - force a one-off fully automatic Codex run without saving project context
 - `/plan <task>` - ask Codex for a plan only, without direct file modification intent
+- `/continue` - replay the last blocked same-workdir Codex request once
 - `/model [name|reset]` - show or set the model override for the current chat
 - `/language [en|zh|zh-HK]` - show or set the system language for the current chat
 - `/verbose [on|off]` - show or toggle system notices for the current chat
@@ -227,6 +228,7 @@ Telegram adaptation notes:
 - `/sh` is implemented by the bot, never invokes a shell interpreter, and only accepts configured command prefixes
 - `/sh` is read-only by default; dangerous prefixes can be configured and require `--confirm` when writable mode is enabled
 - `/plan` translates to a planning-only prompt instead of passing a raw `/plan` slash command to Codex
+- If another chat already has an active Codex run in the same workdir, the bot blocks the new request and requires `/continue` for a one-shot override
 - The default system language is English; use `/language zh` or `/language zh-HK` for localized bot responses
 - `/verbose off` keeps Telegram output quiet by hiding fallback, startup, and session-exit notices for the current chat
 
@@ -255,6 +257,15 @@ Conversation state is now tracked per `chat + project`, not just per chat.
 - `/exec`, `/auto`, and `/plan` stay one-off by design and do not replace the saved project conversation
 - On the SDK backend, project restore uses `resumeThread(threadId)`
 - On the CLI backend, project restore uses PTY resume or `codex exec resume`
+
+## Workspace Contention Guard
+
+The bot now blocks a second Codex run when another bot-managed chat already has an active Codex task in the same workdir.
+
+- the warning is strong by default because simultaneous writes in the same workdir are easy to corrupt
+- `/continue` replays the most recently blocked request once for the current chat
+- switching projects clears the pending blocked request
+- this guard only sees bot-managed chats in this process; if you also use Codex directly in a terminal, use a separate git worktree to avoid conflicts
 
 ## Backend Selection
 
@@ -370,15 +381,15 @@ Repository secrets for live smoke checks:
 Recommended local release gate:
 
 ```bash
-npm run ci
-node scripts/healthcheck.js --strict --telegram-live --codex-live
+npm run release:check
+npm run healthcheck:live
 ```
 
 Release references:
 
 - [operations.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/operations.md)
 - [release.md](/Users/ding/Documents/Code/Github/codex-telegram-claws/docs/release.md)
-- [ecosystem.config.cjs](/Users/ding/Documents/Code/Github/codex-telegram-claws/ecosystem.config.cjs)
+- [ecosystem.config.cjs](/Users/ding/Documents/Code/Github/codex-telegram-claws/ecosystem.config.cjs) - PM2 compatibility shim
 
 ## Security Baseline
 
@@ -396,6 +407,8 @@ Release references:
 ## Operations
 
 The recommended production supervisor is PM2.
+
+`ecosystem.config.ts` is the canonical config file. Start PM2 with `ecosystem.config.cjs`, which only bridges PM2 into the TypeScript source.
 
 Basic flow:
 
