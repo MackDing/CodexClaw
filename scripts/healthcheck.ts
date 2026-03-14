@@ -6,10 +6,10 @@ const strict = process.argv.includes("--strict");
 const telegramLiveCheck = process.argv.includes("--telegram-live");
 const codexLiveCheck = process.argv.includes("--codex-live");
 
-let config;
+let config: ReturnType<typeof loadConfig>;
 try {
   config = loadConfig();
-} catch (error) {
+} catch (error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[FAIL] config: ${message}`);
   process.exit(1);

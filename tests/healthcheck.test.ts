@@ -3,18 +3,22 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import assert from "node:assert/strict";
+import type { AppConfig } from "../src/config.js";
 import { resolveCommandPath, runHealthcheck } from "../src/ops/healthcheck.js";
 
-function createConfig(root) {
+function createConfig(root: string): AppConfig {
   return {
     app: {
+      name: "codex-telegram-claws",
       stateFile: path.join(root, ".codex-telegram-claws-state.json")
     },
     workspace: {
       root
     },
     telegram: {
-      botToken: "dummy-token"
+      botToken: "dummy-token",
+      allowedUserIds: ["1"],
+      proactiveUserIds: []
     },
     runner: {
       backend: "sdk",
@@ -22,13 +26,37 @@ function createConfig(root) {
       args: [],
       cwd: root,
       sdkConfig: {},
+      throttleMs: 10,
+      maxBufferChars: 1000,
+      telegramChunkSize: 3900,
       sdkThreadOptions: {
         skipGitRepoCheck: true,
         additionalDirectories: []
       }
     },
+    reasoning: {
+      mode: "spoiler"
+    },
+    shell: {
+      enabled: false,
+      readOnly: true,
+      allowedCommands: [],
+      dangerousCommands: [],
+      timeoutMs: 5000,
+      maxOutputChars: 4000
+    },
+    cron: {
+      dailySummary: "0 9 * * *",
+      timezone: "UTC"
+    },
+    mcp: {
+      servers: []
+    },
     github: {
-      defaultWorkdir: root
+      token: "",
+      defaultWorkdir: root,
+      defaultBranch: "main",
+      e2eCommand: "npm test"
     }
   };
 }
