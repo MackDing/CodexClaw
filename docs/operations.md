@@ -45,6 +45,8 @@ npm run healthcheck:strict
 npm run healthcheck:live
 ```
 
+Use your own local `.env` values or CI secrets for live checks. Do not commit or paste live output that includes bot usernames, chat IDs, or Codex thread IDs.
+
 What the health check validates:
 
 - workspace and runner directories exist
@@ -59,5 +61,6 @@ What the health check validates:
 - If you also use Codex directly in a terminal, run that work in a separate git worktree. The bot only detects conflicts with other bot-managed chats, not external terminal sessions.
 - Run the bot under a restricted system user.
 - Keep `.env` outside version control.
+- Let each operator configure live-check credentials locally after startup instead of sharing one checked-in identity.
 - Rotate Telegram and GitHub tokens if they are ever exposed.
 - If you reinstall dependencies on macOS, rerun `npm run healthcheck`; the bot now auto-repairs `node-pty` helper permissions on startup.

@@ -86,6 +86,12 @@ npm run healthcheck
 npm run healthcheck:live
 ```
 
+For live checks, configure your own local `.env` values after startup and keep the output local.
+
+- do not commit or paste live output containing bot usernames, chat IDs, thread IDs, or other environment-specific identifiers
+- use your own `BOT_TOKEN`, `ALLOWED_USER_IDS`, and Codex credentials locally
+- for GitHub Actions, set `TELEGRAM_BOT_TOKEN`, `TELEGRAM_EXPECTED_USERNAME`, and `TELEGRAM_SMOKE_CHAT_ID` in repository secrets instead of hardcoding them
+
 ## Development Commands
 
 - `npm run start` - start the bot
@@ -378,10 +384,12 @@ Repository secrets for live smoke checks:
 - `TELEGRAM_EXPECTED_USERNAME` (optional)
 - `TELEGRAM_SMOKE_CHAT_ID` (optional)
 
+Keep live verification output out of git history and release notes. Bot usernames, thread IDs, and chat IDs are environment-specific operator data and should be configured by each user locally or through GitHub secrets.
+
 Recommended local release gate:
 
 ```bash
-npm run release:check
+BOT_TOKEN=dummy-token ALLOWED_USER_IDS=1 npm run release:check
 npm run healthcheck:live
 ```
 

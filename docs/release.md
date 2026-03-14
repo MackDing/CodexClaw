@@ -11,7 +11,7 @@ Run locally:
 
 ```bash
 npm install
-npm run release:check
+BOT_TOKEN=dummy-token ALLOWED_USER_IDS=1 npm run release:check
 ```
 
 Recommended production checks:
@@ -21,6 +21,8 @@ npm run healthcheck:strict
 npm run healthcheck:live
 ```
 
+Use operator-owned local credentials or GitHub secrets for live checks. Do not put real bot usernames, chat IDs, Telegram identities, or Codex thread IDs into tracked docs, release notes, or commits.
+
 Manual checks:
 
 - verify `/status`, `/repo`, `/continue`, `/language`, `/verbose`, `/mcp list`, and `/gh` on a real Telegram chat
@@ -28,13 +30,14 @@ Manual checks:
 - verify cron and proactive push configuration
 - verify only one bot instance is polling
 - verify no second bot-managed chat can start a same-workdir Codex run without the explicit `/continue` override
+- record only pass/fail status in release notes; keep raw live output private to the operator who ran the checks
 
 ## Tag And Publish
 
 ```bash
 git checkout main
 git pull --ff-only
-npm run release:check
+BOT_TOKEN=dummy-token ALLOWED_USER_IDS=1 npm run release:check
 git tag v0.2.0
 git push origin main --tags
 ```

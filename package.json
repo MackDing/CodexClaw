@@ -1,6 +1,6 @@
 {
   "name": "codex-telegram-claws",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A super Telegram bot that securely orchestrates Codex via SDK or CLI/PTy streaming, MCP routing, and GitHub automation skills.",
   "type": "module",
   "main": "src/index.ts",
