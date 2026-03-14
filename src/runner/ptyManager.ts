@@ -82,6 +82,7 @@ interface ChatRuntimeState {
   currentWorkdir: string;
   recentWorkdirs: string[];
   ptySupported: boolean | null;
+  pendingPrompt: PendingPromptRequest | null;
   projectStates: Map<string, ProjectConversationState>;
 }
 
@@ -121,6 +122,7 @@ interface SendPromptOptions {
   fullAuto?: boolean;
   extraArgs?: string[];
   notice?: string;
+  allowWorkspaceConflict?: boolean;
 }
 
 interface SendPromptContext {
@@ -128,6 +130,49 @@ interface SendPromptContext {
     id: string | number;
   };
 }
+
+interface PendingPromptRequest {
+  prompt: string;
+  workdir: string;
+  options: SendPromptOptions;
+  blockingChatId: string;
+}
+
+interface SendPromptStartedResult {
+  started: true;
+  mode: SessionMode;
+  fallback?: boolean;
+  resumed?: boolean;
+}
+
+interface SendPromptBusyResult {
+  started: false;
+  reason: "busy";
+  activeMode: SessionMode;
+}
+
+interface SendPromptWorkspaceBusyResult {
+  started: false;
+  reason: "workspace_busy";
+  activeMode: SessionMode;
+  blockingChatId: string;
+  relativeWorkdir: string;
+}
+
+interface NoPendingPromptResult {
+  started: false;
+  reason: "no_pending_prompt";
+}
+
+export type SendPromptResult =
+  | SendPromptStartedResult
+  | SendPromptBusyResult
+  | SendPromptWorkspaceBusyResult;
+
+export type ContinuePendingPromptResult =
+  | SendPromptStartedResult
+  | SendPromptBusyResult
+  | NoPendingPromptResult;
 
 interface StoredProjectConversationState {
   lastSessionId?: unknown;
@@ -329,6 +374,7 @@ export class PtyManager {
       currentWorkdir: this.config.runner.cwd,
       recentWorkdirs: [this.config.runner.cwd],
       ptySupported: null,
+      pendingPrompt: null,
       projectStates: new Map([
         [
           this.config.runner.cwd,
@@ -527,6 +573,62 @@ export class PtyManager {
     state.recentWorkdirs = history.slice(0, 6);
   }
 
+  clearPendingPrompt(chatId: string | number): void {
+    const state = this.ensureChatState(chatId);
+    state.pendingPrompt = null;
+  }
+
+  storePendingPrompt(
+    chatId: string | number,
+    prompt: string,
+    workdir: string,
+    options: SendPromptOptions,
+    blockingChatId: string
+  ): void {
+    const state = this.ensureChatState(chatId);
+    const replayOptions: SendPromptOptions = {};
+
+    if (options.forceExec) {
+      replayOptions.forceExec = true;
+    }
+    if (options.fullAuto) {
+      replayOptions.fullAuto = true;
+    }
+    if (options.extraArgs?.length) {
+      replayOptions.extraArgs = [...options.extraArgs];
+    }
+    if (options.notice) {
+      replayOptions.notice = options.notice;
+    }
+
+    state.pendingPrompt = {
+      prompt,
+      workdir,
+      options: replayOptions,
+      blockingChatId
+    };
+  }
+
+  findWorkspaceConflict(
+    chatId: string | number,
+    workdir: string
+  ): RunnerSession | null {
+    const key = String(chatId);
+    const resolvedWorkdir = path.resolve(workdir);
+
+    for (const session of this.sessions.values()) {
+      if (session.chatId === key) {
+        continue;
+      }
+
+      if (path.resolve(session.workdir) === resolvedWorkdir) {
+        return session;
+      }
+    }
+
+    return null;
+  }
+
   isInsideWorkspaceRoot(candidate: string): boolean {
     const root = path.resolve(this.config.workspace.root);
     const target = path.resolve(candidate);
@@ -625,6 +727,7 @@ export class PtyManager {
     this.ensureProjectState(key, targetPath);
     state.currentWorkdir = targetPath;
     this.rememberWorkdir(state, targetPath);
+    state.pendingPrompt = null;
     this.closeSession(key);
     this.onChange?.(this.exportState());
 
@@ -1134,17 +1237,33 @@ export class PtyManager {
     ctx: SendPromptContext,
     prompt: string,
     options: SendPromptOptions = {}
-  ): Promise<
-    | { started: false; reason: "busy"; activeMode: SessionMode }
-    | {
-        started: true;
-        mode: SessionMode;
-        fallback?: boolean;
-        resumed?: boolean;
-      }
-  > {
+  ): Promise<SendPromptResult> {
     const chatId = String(ctx.chat.id);
+    const workdir = this.getWorkdir(chatId);
     const projectState = this.ensureProjectState(chatId);
+    const state = this.ensureChatState(chatId);
+
+    if (!options.allowWorkspaceConflict) {
+      const conflict = this.findWorkspaceConflict(chatId, workdir);
+      if (conflict) {
+        this.storePendingPrompt(
+          chatId,
+          prompt,
+          workdir,
+          options,
+          conflict.chatId
+        );
+        return {
+          started: false,
+          reason: "workspace_busy",
+          activeMode: conflict.mode,
+          blockingChatId: conflict.chatId,
+          relativeWorkdir: this.serializeWorkdir(workdir)
+        };
+      }
+    }
+
+    state.pendingPrompt = null;
 
     if (this.config.runner.backend === "sdk") {
       const running = this.sessions.get(chatId);
@@ -1160,7 +1279,7 @@ export class PtyManager {
       const session = this.startSdkSessionWithOptions(chatId, prompt, {
         fullAuto: Boolean(options.fullAuto),
         extraArgs: options.extraArgs || [],
-        workdir: this.getWorkdir(chatId),
+        workdir,
         resumeSessionId:
           options.forceExec || !projectState.lastSessionId
             ? ""
@@ -1209,7 +1328,7 @@ export class PtyManager {
       this.startExecSessionWithOptions(chatId, prompt, {
         fullAuto: Boolean(options.fullAuto),
         extraArgs: options.extraArgs || [],
-        workdir: this.getWorkdir(chatId),
+        workdir,
         trackConversation: false
       });
 
@@ -1244,12 +1363,12 @@ export class PtyManager {
       chatId,
       projectState.lastSessionId
         ? {
-            workdir: this.getWorkdir(chatId),
+            workdir,
             resumeSessionId: projectState.lastSessionId,
             initialPrompt: prompt
           }
         : {
-            workdir: this.getWorkdir(chatId)
+            workdir
           }
     );
 
@@ -1257,7 +1376,7 @@ export class PtyManager {
       session = this.startExecSessionWithOptions(chatId, prompt, {
         fullAuto: Boolean(options.fullAuto),
         extraArgs: options.extraArgs || [],
-        workdir: this.getWorkdir(chatId),
+        workdir,
         resumeSessionId: projectState.lastSessionId || ""
       });
       if (this.isVerbose(chatId)) {
@@ -1304,6 +1423,44 @@ export class PtyManager {
       started: true,
       mode: "pty"
     };
+  }
+
+  async continuePendingPrompt(
+    ctx: SendPromptContext
+  ): Promise<ContinuePendingPromptResult> {
+    const chatId = String(ctx.chat.id);
+    const state = this.ensureChatState(chatId);
+    const pending = state.pendingPrompt;
+
+    if (!pending) {
+      return {
+        started: false,
+        reason: "no_pending_prompt"
+      };
+    }
+
+    state.pendingPrompt = null;
+
+    try {
+      const result = await this.sendPrompt(ctx, pending.prompt, {
+        ...pending.options,
+        allowWorkspaceConflict: true
+      });
+
+      if (!result.started) {
+        state.pendingPrompt = pending;
+        return {
+          started: false,
+          reason: "busy",
+          activeMode: result.activeMode
+        };
+      }
+
+      return result;
+    } catch (error) {
+      state.pendingPrompt = pending;
+      throw error;
+    }
   }
 
   interrupt(chatId: string | number): boolean {
@@ -1482,6 +1639,7 @@ export class PtyManager {
           ...recentWorkdirs.filter((workdir) => workdir !== currentWorkdir)
         ].slice(0, 6),
         ptySupported: null,
+        pendingPrompt: null,
         projectStates
       });
     }

@@ -141,12 +141,15 @@ function createFakeCodexClient(
 }
 
 function createExecFallbackSession(
-  chatId: string
+  chatId: string,
+  workdir = process.cwd(),
+  mode: "exec" | "sdk" | "pty" = "exec"
 ): ReturnType<PtyManager["startExecSessionWithOptions"]> {
   return {
-    mode: "exec",
+    mode,
     streamMessageIds: [],
-    chatId
+    chatId,
+    workdir
   } as unknown as ReturnType<PtyManager["startExecSessionWithOptions"]>;
 }
 
@@ -528,6 +531,102 @@ test("pty manager hides exec fallback notices when verbose output is off", async
   await manager.sendPrompt({ chat: { id: 77 } }, "who are u");
 
   assert.equal(sentMessages.length, 0);
+});
+
+test("pty manager blocks a prompt when another chat is active in the same workdir", async () => {
+  const manager = createManager({
+    backend: "sdk",
+    codexClientFactory: createFakeCodexClient([
+      {
+        events: async function* () {
+          yield {
+            type: "item.completed",
+            item: {
+              id: "item-1",
+              type: "agent_message",
+              text: "should not run"
+            }
+          };
+        }
+      }
+    ])
+  });
+
+  manager.sessions.set("2", createExecFallbackSession("2", process.cwd(), "sdk"));
+
+  const result = await manager.sendPrompt({ chat: { id: 1 } }, "edit files");
+
+  assert.deepEqual(result, {
+    started: false,
+    reason: "workspace_busy",
+    activeMode: "sdk",
+    blockingChatId: "2",
+    relativeWorkdir: "."
+  });
+});
+
+test("pty manager replays a blocked prompt once through the continue path", async () => {
+  const calls: FakeCall[] = [];
+  const manager = createManager({
+    backend: "sdk",
+    codexClientFactory: createFakeCodexClient(
+      [
+        {
+          initialId: "cccccccc-cccc-cccc-cccc-cccccccccccc",
+          events: async function* () {
+            yield {
+              type: "item.completed",
+              item: {
+                id: "item-continue",
+                type: "agent_message",
+                text: "continued"
+              }
+            };
+            yield {
+              type: "turn.completed",
+              usage: {
+                input_tokens: 1,
+                cached_input_tokens: 0,
+                output_tokens: 1
+              }
+            };
+          }
+        }
+      ],
+      calls
+    )
+  });
+
+  manager.sessions.set("2", createExecFallbackSession("2", process.cwd(), "sdk"));
+
+  const blocked = await manager.sendPrompt(
+    { chat: { id: 1 } },
+    "apply patch and run tests"
+  );
+
+  assert.equal(blocked.started, false);
+  assert.equal(blocked.reason, "workspace_busy");
+
+  manager.sessions.delete("2");
+
+  const continued = await manager.continuePendingPrompt({
+    chat: { id: 1 }
+  });
+
+  assert.equal(continued.started, true);
+  assert.equal(continued.mode, "sdk");
+  await waitFor(() => !manager.getStatus(1).active);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].action, "start");
+
+  const nonePending = await manager.continuePendingPrompt({
+    chat: { id: 1 }
+  });
+
+  assert.deepEqual(nonePending, {
+    started: false,
+    reason: "no_pending_prompt"
+  });
 });
 
 test("pty manager shows exec fallback notices when verbose output is on", async () => {
