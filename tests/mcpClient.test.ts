@@ -139,3 +139,40 @@ test("mcp client reports idempotent enable and disable operations", async () => 
   assert.equal(disabled.changed, true);
   assert.equal(disabledAgain.changed, false);
 });
+
+test("mcp client warmConnections does not block startup when a server hangs", async () => {
+  const client = createClient();
+  client.connectAll = async () => new Promise<void>(() => {});
+
+  const result = await Promise.race([
+    Promise.resolve().then(() => {
+      client.warmConnections();
+      return "continued";
+    }),
+    new Promise<string>((resolve) => {
+      setTimeout(() => resolve("blocked"), 25);
+    })
+  ]);
+
+  assert.equal(result, "continued");
+});
+
+test("mcp client warmConnections reports asynchronous connection failures", async () => {
+  const client = createClient();
+  const errors: string[] = [];
+  client.connectAll = async () => {
+    throw new Error("mcp offline");
+  };
+
+  client.warmConnections({
+    onError: (error) => {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  await new Promise((resolve) => {
+    setImmediate(resolve);
+  });
+
+  assert.deepEqual(errors, ["mcp offline"]);
+});

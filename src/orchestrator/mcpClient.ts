@@ -43,6 +43,10 @@ interface McpClientOptions {
   onChange?: (snapshot: McpClientSnapshot) => void;
 }
 
+interface McpWarmConnectionsOptions {
+  onError?: (error: unknown) => void;
+}
+
 function normalizeToolContent(result: unknown): string {
   if (!result) return "";
 
@@ -130,6 +134,12 @@ export class McpClient {
     for (const server of this.config.mcp.servers) {
       await this.connectServer(server);
     }
+  }
+
+  warmConnections({ onError }: McpWarmConnectionsOptions = {}): void {
+    void this.connectAll().catch((error: unknown) => {
+      onError?.(error);
+    });
   }
 
   async connectServer(server: McpServerConfig): Promise<void> {

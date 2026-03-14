@@ -62,9 +62,11 @@ mcpClient = new McpClient(config, {
   onChange: () => void saveRuntimeState()
 });
 mcpClient.restoreState(runtimeState.mcp);
-await mcpClient.connectAll().catch((error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error("[mcp] connect failed:", message);
+mcpClient.warmConnections({
+  onError: (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[mcp] connect failed:", message);
+  }
 });
 
 const githubSkill = new GitHubSkill({ config });
