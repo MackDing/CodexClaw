@@ -1,0 +1,12 @@
+{
+  "name": "MackDing/CodexClaw",
+  "description": "A powerful Telegram bot that provides remote access to CodeX, enabling developers to interact with their projects from anywhere with full AI assistance and session persistence.",
+  "accepts": [
+    {
+      "network": "eip155:8453",
+      "asset": "USDC",
+      "address": "YOUR_WALLET_ADDRESS"
+    }
+  ],
+  "resources": []
+}
