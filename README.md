@@ -4,7 +4,7 @@
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-green.svg)](https://nodejs.org/en/download/current)
 
 A Telegram bot that gives you remote access to `@openai/codex` through a Node.js runtime with two Codex backends: the Codex SDK and the legacy CLI/PTy path.  
-It is strictly inspired by `RichardAtCT/claude-code-telegram`, but this project is implemented for Claude Code SDK/CLI + MCP + Subagent routing.
+It is strictly inspired by `RichardAtCT/claude-code-telegram`, but this project is implemented for CodeX SDK/CLI + MCP + Subagent routing.
 
 ## Use This Like A Skill
 
