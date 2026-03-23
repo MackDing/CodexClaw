@@ -7,6 +7,8 @@ function createConfig(allowedUserIds: string[]) {
   return {
     telegram: {
       botToken: "dummy-token",
+      apiBase: "https://api.telegram.org",
+      proxyUrl: undefined,
       allowedUserIds,
       proactiveUserIds: []
     }

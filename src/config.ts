@@ -3,6 +3,10 @@ import path from "node:path";
 import process from "node:process";
 import dotenv from "dotenv";
 import { toErrorMessage } from "./lib/errors.js";
+import {
+  normalizeTelegramApiBase,
+  normalizeTelegramProxyUrl
+} from "./lib/telegramApi.js";
 
 dotenv.config();
 
@@ -49,6 +53,8 @@ export interface AppConfig {
   };
   telegram: {
     botToken: string;
+    apiBase: string;
+    proxyUrl?: string;
     allowedUserIds: string[];
     proactiveUserIds: string[];
   };
@@ -374,6 +380,8 @@ export function loadConfig(): AppConfig {
     },
     telegram: {
       botToken: required("BOT_TOKEN"),
+      apiBase: normalizeTelegramApiBase(process.env.TELEGRAM_API_BASE),
+      proxyUrl: normalizeTelegramProxyUrl(process.env.TELEGRAM_PROXY_URL),
       allowedUserIds,
       proactiveUserIds
     },

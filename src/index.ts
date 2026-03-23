@@ -15,10 +15,18 @@ import { ShellManager } from "./runner/shellManager.js";
 import { DevServerManager } from "./runner/devServerManager.js";
 import { Scheduler } from "./cron/scheduler.js";
 import { toErrorMessage } from "./lib/errors.js";
+import { createTelegramApiAgent } from "./lib/telegramApi.js";
 
 const config = loadConfig();
+const telegramApiAgent = createTelegramApiAgent(config.telegram.proxyUrl);
 const bot = new Telegraf(config.telegram.botToken, {
-  handlerTimeout: 120000
+  handlerTimeout: 120000,
+  telegram: {
+    apiRoot: config.telegram.apiBase,
+    ...(telegramApiAgent
+      ? { agent: telegramApiAgent, attachmentAgent: telegramApiAgent }
+      : {})
+  }
 });
 const stateStore = new RuntimeStateStore({ config });
 let mcpClient: McpClient | null = null;

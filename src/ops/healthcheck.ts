@@ -6,6 +6,10 @@ import type { AppConfig } from "../config.js";
 import { repairNodePtySpawnHelperPermissions } from "../runner/ptyPreflight.js";
 import { extractCodexExecResponse } from "../bot/formatter.js";
 import { toErrorMessage } from "../lib/errors.js";
+import {
+  buildTelegramApiUrl,
+  createTelegramFetchDispatcher
+} from "../lib/telegramApi.js";
 
 export type HealthcheckStatus = "pass" | "warn" | "fail";
 
@@ -291,8 +295,17 @@ export async function runHealthcheck(
   const liveTelegramCheck = Boolean(options.telegramLiveCheck);
   if (liveTelegramCheck) {
     try {
+      const url = buildTelegramApiUrl(
+        config.telegram.apiBase,
+        config.telegram.botToken,
+        "getMe"
+      );
+      const dispatcher = createTelegramFetchDispatcher(
+        config.telegram.proxyUrl
+      );
       const response = await fetch(
-        `https://api.telegram.org/bot${config.telegram.botToken}/getMe`
+        url,
+        dispatcher ? { dispatcher } : undefined
       );
       const payload = (await response.json()) as TelegramGetMeResponse;
       if (response.ok && payload?.ok && payload?.result?.username) {

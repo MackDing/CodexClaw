@@ -17,6 +17,8 @@ function createConfig(root: string): AppConfig {
     },
     telegram: {
       botToken: "dummy-token",
+      apiBase: "https://api.telegram.org",
+      proxyUrl: undefined,
       allowedUserIds: ["1"],
       proactiveUserIds: []
     },

@@ -7,6 +7,8 @@ import { loadConfig } from "../src/config.js";
 
 const ENV_KEYS = [
   "BOT_TOKEN",
+  "TELEGRAM_API_BASE",
+  "TELEGRAM_PROXY_URL",
   "ALLOWED_USER_IDS",
   "PROACTIVE_USER_IDS",
   "STATE_FILE",
@@ -95,6 +97,8 @@ test("loadConfig parses env values into runtime config", () => {
   const config = withEnv(
     {
       BOT_TOKEN: "telegram-token",
+      TELEGRAM_API_BASE: "https://telegram.example/api/",
+      TELEGRAM_PROXY_URL: "http://127.0.0.1:7890",
       ALLOWED_USER_IDS: "1, 2",
       PROACTIVE_USER_IDS: "2",
       STATE_FILE: stateFile,
@@ -134,6 +138,8 @@ test("loadConfig parses env values into runtime config", () => {
   );
 
   assert.equal(config.telegram.botToken, "telegram-token");
+  assert.equal(config.telegram.apiBase, "https://telegram.example/api");
+  assert.equal(config.telegram.proxyUrl, "http://127.0.0.1:7890");
   assert.equal(config.app.stateFile, stateFile);
   assert.deepEqual(config.telegram.allowedUserIds, ["1", "2"]);
   assert.deepEqual(config.telegram.proactiveUserIds, ["2"]);

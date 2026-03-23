@@ -407,6 +407,8 @@ CODEX_WORKDIR=.
 Common options:
 
 ```bash
+TELEGRAM_API_BASE=https://api.telegram.org
+TELEGRAM_PROXY_URL=
 CODEX_COMMAND=codex
 CODEX_ARGS=
 CODEX_BACKEND=sdk
@@ -537,6 +539,7 @@ Telegram can manage runtime usage of Bot-side MCP and skills, but not install ar
 ## Troubleshooting
 
 - **Bot not responding**: verify `BOT_TOKEN` and `ALLOWED_USER_IDS`
+- **Telegram API blocked**: set `TELEGRAM_PROXY_URL` (HTTP proxy like `http://127.0.0.1:7890`) or run a local Bot API server and set `TELEGRAM_API_BASE`
 - **Codex not producing output**: verify `CODEX_BACKEND`, `CODEX_COMMAND`, and `CODEX_WORKDIR`
 - **SDK backend cannot resume**: verify the host still has access to `~/.codex/sessions` and that the saved thread id belongs to the same working directory
 - **Markdown parse errors**: reduce output size/context; check special characters in tool output
