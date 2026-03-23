@@ -78,7 +78,6 @@ Key design goals:
 
 ## Screenshot
 
-
 ### Install
 
 ```bash
@@ -364,7 +363,7 @@ SDK-related options:
 CODEX_BACKEND=sdk
 CODEX_SDK_CONFIG={}
 CODEX_SDK_SKIP_GIT_REPO_CHECK=true
-CODEX_SDK_SANDBOX_MODE=workspace-write
+CODEX_SDK_SANDBOX_MODE=danger-full-access
 CODEX_SDK_APPROVAL_POLICY=never
 CODEX_SDK_REASONING_EFFORT=high
 CODEX_SDK_NETWORK_ACCESS_ENABLED=true
@@ -372,7 +371,7 @@ CODEX_SDK_WEB_SEARCH_MODE=live
 CODEX_SDK_ADDITIONAL_DIRECTORIES=["/abs/path/extra-worktree"]
 ```
 
-If `CODEX_SDK_SANDBOX_MODE` is unset, the bot now defaults SDK threads to `workspace-write` so normal coding tasks can modify files inside the active repo. Set it explicitly to `read-only` only if you want analysis-only behavior.
+If `CODEX_SDK_SANDBOX_MODE` is unset, the bot now defaults SDK threads to Full Access: `danger-full-access` with `approvalPolicy=never`. Set it explicitly to `workspace-write` or `read-only` only if you want a more restricted mode.
 
 CLI-related options:
 

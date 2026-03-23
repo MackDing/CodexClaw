@@ -1,3 +1,4 @@
+import path from "node:path";
 import { Markup } from "telegraf";
 import {
   buildPlanPrompt,
@@ -15,7 +16,10 @@ import type { Scheduler } from "../cron/scheduler.js";
 import { toErrorMessage } from "../lib/errors.js";
 import type { Router } from "../orchestrator/router.js";
 import type { PtyManager } from "../runner/ptyManager.js";
-import type { ShellManager } from "../runner/shellManager.js";
+import type {
+  ShellExecutionResult,
+  ShellManager
+} from "../runner/shellManager.js";
 import type { DevServerManager } from "../runner/devServerManager.js";
 import type { SkillRegistry } from "../orchestrator/skillRegistry.js";
 
@@ -143,6 +147,65 @@ function suggestProjectName(
   );
 
   return suggestClosestWord(input, candidates, threshold);
+}
+
+function isInsideWorkspaceRoot(root: string, candidate: string): boolean {
+  const target = path.resolve(candidate);
+  const relative = path.relative(root, target);
+
+  return (
+    relative === "" ||
+    (!relative.startsWith("..") && !path.isAbsolute(relative))
+  );
+}
+
+function extractCloneTarget(
+  result: Pick<
+    ShellExecutionResult,
+    "status" | "command" | "output" | "workdir"
+  >
+): string | null {
+  if (
+    result.status !== "passed" ||
+    !result.command ||
+    !result.output ||
+    !result.workdir ||
+    !/^git\s+clone(?:\s|$)/i.test(result.command)
+  ) {
+    return null;
+  }
+
+  const match = result.output.match(/Cloning into '([^']+)'\.\.\./i);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  return path.resolve(result.workdir, match[1]);
+}
+
+function buildShellSuccessFollowUp(
+  locale: Locale,
+  result: Pick<
+    ShellExecutionResult,
+    "status" | "command" | "output" | "workdir"
+  >,
+  workspaceRoot: string
+): string | null {
+  const cloneTarget = extractCloneTarget(result);
+  if (!cloneTarget) {
+    return null;
+  }
+
+  const relativePath = path.relative(workspaceRoot, cloneTarget) || ".";
+  const repoCommand = isInsideWorkspaceRoot(workspaceRoot, cloneTarget)
+    ? `/repo ${relativePath}`
+    : "";
+
+  return t(locale, "shellCloneSucceeded", {
+    relativePath,
+    workdir: cloneTarget,
+    repoCommand
+  });
 }
 
 export function registerHandlers({
@@ -509,6 +572,15 @@ export function registerHandlers({
     }
 
     await sendChunkedMarkdown(ctx, t(locale, "shellResult", { result }));
+
+    const followUp = buildShellSuccessFollowUp(
+      locale,
+      result,
+      status.workspaceRoot
+    );
+    if (followUp) {
+      await sendChunkedMarkdown(ctx, followUp);
+    }
   });
 
   bot.command("dev", async (ctx: any) => {

@@ -282,6 +282,15 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
         "output:",
         result.output
       ]),
+    shellCloneSucceeded: ({ relativePath, workdir, repoCommand }) =>
+      joinLines([
+        "Clone completed.",
+        `project: ${relativePath}`,
+        `workdir: ${workdir}`,
+        repoCommand
+          ? `next: switch to it with ${repoCommand}`
+          : "next: switch to the cloned repo with /repo <name>"
+      ]),
     modelCurrent: ({ model }) =>
       `Current model: ${model || "inherit codex default"}`,
     modelReset: ({ closed }) =>
@@ -751,6 +760,15 @@ const MESSAGES: Record<Locale, TranslationCatalog> = {
         "",
         "output:",
         result.output
+      ]),
+    shellCloneSucceeded: ({ relativePath, workdir, repoCommand }) =>
+      joinLines([
+        "仓库拉取完成。",
+        `project: ${relativePath}`,
+        `workdir: ${workdir}`,
+        repoCommand
+          ? `下一步: 使用 ${repoCommand} 切换到这个仓库`
+          : "下一步: 使用 /repo <name> 切换到新仓库"
       ]),
     modelCurrent: ({ model }) =>
       `当前模型: ${model || "inherit codex default"}`,

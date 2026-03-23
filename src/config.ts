@@ -339,11 +339,14 @@ export function loadConfig(): AppConfig {
         "read-only",
         "workspace-write",
         "danger-full-access"
-      ]) || (runnerBackend === "sdk" ? "workspace-write" : undefined),
-    approvalPolicy: parseEnum<CodexApprovalPolicy>(
-      process.env.CODEX_SDK_APPROVAL_POLICY,
-      ["never", "on-request", "on-failure", "untrusted"]
-    ),
+      ]) || (runnerBackend === "sdk" ? "danger-full-access" : undefined),
+    approvalPolicy:
+      parseEnum<CodexApprovalPolicy>(process.env.CODEX_SDK_APPROVAL_POLICY, [
+        "never",
+        "on-request",
+        "on-failure",
+        "untrusted"
+      ]) || (runnerBackend === "sdk" ? "never" : undefined),
     modelReasoningEffort: parseEnum<CodexReasoningEffort>(
       process.env.CODEX_SDK_REASONING_EFFORT,
       ["minimal", "low", "medium", "high", "xhigh"]

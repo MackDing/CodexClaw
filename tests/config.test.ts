@@ -227,7 +227,7 @@ test("loadConfig falls back to the current working directory when configured pat
   assert.equal(config.mcp.servers[0].cwd, cwd);
 });
 
-test("loadConfig defaults the sdk sandbox to workspace-write when unset", () => {
+test("loadConfig defaults the sdk runtime to full access when unset", () => {
   const config = withEnv(
     {
       BOT_TOKEN: "telegram-token",
@@ -238,7 +238,11 @@ test("loadConfig defaults the sdk sandbox to workspace-write when unset", () => 
   );
 
   assert.equal(config.runner.backend, "sdk");
-  assert.equal(config.runner.sdkThreadOptions.sandboxMode, "workspace-write");
+  assert.equal(
+    config.runner.sdkThreadOptions.sandboxMode,
+    "danger-full-access"
+  );
+  assert.equal(config.runner.sdkThreadOptions.approvalPolicy, "never");
 });
 
 test("loadConfig requires shell allowlist when safe shell is enabled", () => {

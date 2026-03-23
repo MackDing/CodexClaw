@@ -6,10 +6,7 @@ import type { AppConfig } from "../config.js";
 import { repairNodePtySpawnHelperPermissions } from "../runner/ptyPreflight.js";
 import { extractCodexExecResponse } from "../bot/formatter.js";
 import { toErrorMessage } from "../lib/errors.js";
-import {
-  buildTelegramApiUrl,
-  createTelegramFetchDispatcher
-} from "../lib/telegramApi.js";
+import { requestTelegramJson } from "../lib/telegramApi.js";
 
 export type HealthcheckStatus = "pass" | "warn" | "fail";
 
@@ -295,20 +292,19 @@ export async function runHealthcheck(
   const liveTelegramCheck = Boolean(options.telegramLiveCheck);
   if (liveTelegramCheck) {
     try {
-      const url = buildTelegramApiUrl(
-        config.telegram.apiBase,
-        config.telegram.botToken,
-        "getMe"
-      );
-      const dispatcher = createTelegramFetchDispatcher(
-        config.telegram.proxyUrl
-      );
-      const response = await fetch(
-        url,
-        dispatcher ? { dispatcher } : undefined
-      );
-      const payload = (await response.json()) as TelegramGetMeResponse;
-      if (response.ok && payload?.ok && payload?.result?.username) {
+      const { statusCode, payload } =
+        await requestTelegramJson<TelegramGetMeResponse>({
+          apiBase: config.telegram.apiBase,
+          token: config.telegram.botToken,
+          method: "getMe",
+          proxyUrl: config.telegram.proxyUrl
+        });
+      if (
+        statusCode >= 200 &&
+        statusCode < 300 &&
+        payload?.ok &&
+        payload?.result?.username
+      ) {
         checks.push(
           makeCheck(
             "telegram api",
@@ -321,7 +317,7 @@ export async function runHealthcheck(
           makeCheck(
             "telegram api",
             "fail",
-            payload?.description || `HTTP ${response.status}`
+            payload?.description || `HTTP ${statusCode}`
           )
         );
       }
