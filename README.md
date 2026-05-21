@@ -6,7 +6,6 @@
 A Telegram bot that gives you remote access to `@openai/codex` through a Node.js runtime with two Codex backends: the Codex SDK and the legacy CLI/PTy path.  
 It is strictly inspired by `RichardAtCT/claude-code-telegram`, but this project is implemented for CodeX SDK/CLI + MCP + Subagent routing.
 
-
 ## What Is This?
 
 This bot connects Telegram to Codex and routes tasks to the right execution surface:
@@ -21,7 +20,6 @@ Key design goals:
 - Enforce zero-trust access with whitelist-only users
 - Avoid duplicate MCP calls by separating Codex MCP vs Bot MCP responsibilities
 - Prefer the SDK backend for new installs, while keeping the CLI backend as a fallback
-
 
 ## Use This Like A Skill
 
@@ -70,7 +68,6 @@ npm run start
 
 For agent-oriented setup, see [SKILL.md](/Users/ding/Documents/Code/Github/CodexClaw/SKILL.md).
 
-
 ## Quick Start
 
 ### Prerequisites
@@ -78,7 +75,6 @@ For agent-oriented setup, see [SKILL.md](/Users/ding/Documents/Code/Github/Codex
 - Node.js 20+ -- https://nodejs.org/en/download/current
 - Codex CLI -- https://github.com/openai/codex
 - Telegram Bot Token -- from `@BotFather`
-
 
 ## Development Commands
 
@@ -492,18 +488,17 @@ Telegram can manage runtime usage of Bot-side MCP and skills, but not install ar
 - Codex SDK reference: https://github.com/coleam00/codex-telegram-coding-assistant
 - This implementation: Codex-first Node.js stack (`@openai/codex-sdk`, `telegraf`, `node-pty`, `node-cron`, MCP SDK)
 
-
 ---
 
-## 🦞 OPC Ecosystem
+## ?? OPC Ecosystem
 
-> Built by [@MackDing](https://github.com/MackDing) — One-Person Company infrastructure powered by AI agents.
+> Built by [@MackDing](https://github.com/MackDing) ? One-Person Company infrastructure powered by AI agents.
 
-| Project | What it does |
-|---------|-------------|
-| [**opc.ren**](https://opc.ren) | OPC founder hub — tools, signals, community |
-| [**CodexClaw**](https://github.com/MackDing/CodexClaw) | Telegram bot for remote Codex access with MCP + subagent routing |
-| [**awesome-ai-api**](https://github.com/MackDing/awesome-ai-api) | Leaderboard of 200+ AI API gateways & relays |
-| [**claude-context-health**](https://github.com/MackDing/claude-context-health) | Diagnose & fix Claude Code session degradation |
-| [**opc-daily-signal**](https://github.com/MackDing/opc-daily-signal) | AI-powered daily decision intelligence for OPC founders |
-| [**doc-preprocess-hub**](https://github.com/MackDing/doc-preprocess-hub) | Enterprise document preprocessing — MinerU + docling |
+| Project                                                                        | What it does                                                     |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| [**opc.ren**](https://opc.ren)                                                 | OPC founder hub ? tools, signals, community                      |
+| [**CodexClaw**](https://github.com/MackDing/CodexClaw)                         | Telegram bot for remote Codex access with MCP + subagent routing |
+| [**awesome-ai-api**](https://github.com/MackDing/awesome-ai-api)               | Leaderboard of 200+ AI API gateways & relays                     |
+| [**claude-context-health**](https://github.com/MackDing/claude-context-health) | Diagnose & fix Claude Code session degradation                   |
+| [**opc-daily-signal**](https://github.com/MackDing/opc-daily-signal)           | AI-powered daily decision intelligence for OPC founders          |
+| [**doc-preprocess-hub**](https://github.com/MackDing/doc-preprocess-hub)       | Enterprise document preprocessing ? MinerU + docling             |
