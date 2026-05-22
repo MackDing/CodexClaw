@@ -45,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${SCAN_HISTORY}" = "true" ]; then
-            gitleaks git --source . --redact --verbose
+            gitleaks git . --redact --verbose
           else
-            gitleaks dir --source . --redact --verbose
+            gitleaks dir . --redact --verbose
           fi
