@@ -7,6 +7,12 @@ on:
       - main
       - master
   workflow_dispatch:
+    inputs:
+      scan_history:
+        description: Run full Git history scan instead of current working tree scan
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -15,6 +21,8 @@ jobs:
   scan:
     name: Secret scan
     runs-on: ubuntu-latest
+    env:
+      SCAN_HISTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.scan_history || false }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,4 +42,10 @@ jobs:
 
       - name: Run gitleaks
         shell: bash
-        run: gitleaks detect --source . --redact --verbose
+        run: |
+          set -euo pipefail
+          if [ "${SCAN_HISTORY}" = "true" ]; then
+            gitleaks git --source . --redact --verbose
+          else
+            gitleaks dir --source . --redact --verbose
+          fi
