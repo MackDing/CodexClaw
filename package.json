@@ -43,7 +43,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.13.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@octokit/rest": "^22.0.0",
     "@openai/codex-sdk": "^0.114.0",
     "dotenv": "^16.4.7",
