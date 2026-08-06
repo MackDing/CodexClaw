@@ -66,7 +66,7 @@ npm run start
 /gh create repo my-new-app
 ```
 
-For agent-oriented setup, see [SKILL.md](/Users/ding/Documents/Code/Github/CodexClaw/SKILL.md).
+For agent-oriented setup, see [SKILL.md](SKILL.md).
 
 ## Quick Start
 
@@ -113,8 +113,8 @@ Core modules:
 - `src/runner/ptyManager.ts`: Codex runner abstraction for SDK threads, CLI/PTy sessions, and CLI exec fallback
 - `src/cron/scheduler.ts`: proactive scheduled push
 
-Enterprise target architecture: [docs/enterprise-architecture.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/enterprise-architecture.md)
-Enterprise Phase 1 roadmap: [docs/phase-1-roadmap.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/phase-1-roadmap.md)
+Enterprise target architecture: [docs/enterprise-architecture.md](docs/enterprise-architecture.md)
+Enterprise Phase 1 roadmap: [docs/phase-1-roadmap.md](docs/phase-1-roadmap.md)
 
 ## Routing and MCP Boundary
 
@@ -148,9 +148,9 @@ How they are triggered:
 
 Where this happens:
 
-- Router decision order: [router.ts](/Users/ding/Documents/Code/Github/CodexClaw/src/orchestrator/router.ts)
-- Skill toggles per chat: [skillRegistry.ts](/Users/ding/Documents/Code/Github/CodexClaw/src/orchestrator/skillRegistry.ts)
-- Telegram command entrypoints: [handlers.ts](/Users/ding/Documents/Code/Github/CodexClaw/src/bot/handlers.ts)
+- Router decision order: [router.ts](src/orchestrator/router.ts)
+- Skill toggles per chat: [skillRegistry.ts](src/orchestrator/skillRegistry.ts)
+- Telegram command entrypoints: [handlers.ts](src/bot/handlers.ts)
 
 Operationally, subagents are the bot's control plane. Codex remains the coding execution plane.
 
@@ -410,13 +410,13 @@ npm run healthcheck:live
 npm run telegram:smoke
 ```
 
-`v1.0.0` should only be tagged after the full release gate, Telegram smoke checks, and repository metadata sync are complete. The detailed checklist and topic sync command live in [release.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/release.md).
+`v1.0.0` should only be tagged after the full release gate, Telegram smoke checks, and repository metadata sync are complete. The detailed checklist and topic sync command live in [release.md](docs/release.md).
 
 Release references:
 
-- [operations.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/operations.md)
-- [release.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/release.md)
-- [ecosystem.config.cjs](/Users/ding/Documents/Code/Github/CodexClaw/ecosystem.config.cjs) - PM2 compatibility shim
+- [operations.md](docs/operations.md)
+- [release.md](docs/release.md)
+- [ecosystem.config.cjs](ecosystem.config.cjs) - PM2 compatibility shim
 
 ## Security Baseline
 

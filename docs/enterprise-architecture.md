@@ -82,7 +82,7 @@ Subagents should be triggered only after:
 
 ## Recommended Deployment Phases
 
-Implementation roadmap: [phase-1-roadmap.md](/Users/ding/Documents/Code/Github/CodexClaw/docs/phase-1-roadmap.md)
+Implementation roadmap: [phase-1-roadmap.md](phase-1-roadmap.md)
 
 ### Phase 1: Harden Current Single-Host Beta
 
