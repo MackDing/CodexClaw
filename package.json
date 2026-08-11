@@ -45,7 +45,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.2",
     "@octokit/rest": "^22.0.0",
-    "@openai/codex-sdk": "^0.114.0",
+    "@openai/codex-sdk": "^0.133.0",
     "dotenv": "^16.4.7",
     "https-proxy-agent": "^8.0.0",
     "lodash.throttle": "^4.1.1",
